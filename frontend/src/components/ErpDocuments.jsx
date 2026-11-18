@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createErpCustomer, createErpDocument, createErpPayment, getErpCustomerPayments, getErpCustomers, getErpDebts, getErpDocument, getErpDocuments, uploadErpPaymentProof } from '../services/erpApi.js'
+import { createErpCustomer, createErpDocument, createErpPayment, getErpCustomerPayments, getErpDebts, getErpDocument, getErpDocuments, uploadErpPaymentProof } from '../services/erpApi.js'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const newNumber = (type) => `${type === 'salesInvoice' ? 'HD' : 'PX'}-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`
@@ -161,7 +161,13 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const [availableInvoices, setAvailableInvoices] = useState([])
   const [invoiceSearch, setInvoiceSearch] = useState('')
   const [linkedIssues, setLinkedIssues] = useState([])
-  const [customerProfiles, setCustomerProfiles] = useState([])
+  const [customerProfiles, setCustomerProfiles] = useState(() => {
+    try {
+      const profiles = JSON.parse(window.localStorage.getItem('erp-customer-profiles') || '[]')
+      return Array.isArray(profiles) ? profiles : []
+    }
+    catch { return [] }
+  })
   const [customerDebts, setCustomerDebts] = useState([])
   const [readOnly, setReadOnly] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -187,10 +193,9 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
 
   const loadDocuments = async () => {
     try {
-      const [rows, invoices, profiles] = await Promise.all([getErpDocuments(), getErpDocuments({ type: 'salesInvoice' }), getErpCustomers()])
+      const [rows, invoices] = await Promise.all([getErpDocuments(), getErpDocuments({ type: 'salesInvoice' })])
       setDocuments(rows)
       setAvailableInvoices(invoices)
-      setCustomerProfiles(profiles)
     }
     catch (loadError) { setError(loadError.message) }
   }
@@ -441,7 +446,11 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
     setError('')
     try {
       const customer = await createErpCustomer(customerAccount)
-      setCustomerProfiles((current) => [customer, ...current.filter((item) => normalizeCustomerName(item.name) !== normalizeCustomerName(customer.name))])
+      setCustomerProfiles((current) => {
+        const updated = [customer, ...current.filter((item) => normalizeCustomerName(item.name) !== normalizeCustomerName(customer.name))]
+        try { window.localStorage.setItem('erp-customer-profiles', JSON.stringify(updated)) } catch {}
+        return updated
+      })
       setForm((current) => ({ ...current, customerName: customer.name, customerPhone: customer.phone, customerAddress: customer.address }))
       setCustomerAccountOpen(false)
       setCustomerAccount({ name: '', phone: '', address: '' })
