@@ -543,6 +543,8 @@
 .erp-payment-form input, .erp-payment-form select { width: 100%; min-width: 0; min-height: 36px; padding: 7px 9px; border: 1px solid var(--erp-line); border-radius: 4px; color: #273e33; background: #fff; font: inherit; font-size: 11px; }
 .erp-payment-form > button { align-self: end; }
 .erp-payment-preview { width: 100%; max-height: 180px; border: 1px solid var(--erp-line); border-radius: 5px; object-fit: contain; background: #fff; }
+.erp-payment-previews { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 7px; margin-top: 8px; }
+.erp-payment-previews .erp-payment-preview { height: 84px; max-height: 84px; }
 .erp-customer-debt-hint { grid-column: 1 / -1; margin: -4px 0 0; padding: 8px 10px; border-left: 3px solid #b34531; color: #53675c; background: #f3f6ed; font-size: 10px; }
 .erp-customer-debt-hint b { color: #a34532; font-family: var(--font-data); }
 .erp-settlement-mode { display: flex; gap: 7px; padding: 2px 0; }

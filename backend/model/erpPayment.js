@@ -13,6 +13,7 @@ const erpPaymentSchema = new mongoose.Schema({
   paymentDate: { type: Date, required: true },
   method: { type: String, enum: ["bankTransfer", "cash", "other"], default: "bankTransfer" },
   proofImageUrl: { type: String, trim: true, default: "", maxlength: 2048 },
+  proofImageUrls: { type: [{ type: String, trim: true, maxlength: 2048 }], default: [] },
   reference: { type: String, trim: true, default: "", maxlength: 160 },
   note: { type: String, trim: true, default: "", maxlength: 500 },
   allocations: { type: [allocationSchema], default: [] },

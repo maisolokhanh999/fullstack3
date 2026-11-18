@@ -317,10 +317,12 @@ export const getCustomerPayments = async (req, res) => {
 
 export const createCustomerPayment = async (req, res) => {
   try {
-    const { customerName, customerPhone = "", amount, paymentDate, method = "bankTransfer", proofImageUrl = "", reference = "", note = "" } = req.body;
+    const { customerName, customerPhone = "", amount, paymentDate, method = "bankTransfer", proofImageUrl = "", proofImageUrls = [], reference = "", note = "" } = req.body;
     if (!customerName?.trim() || !Number.isFinite(amount) || amount <= 0) throw new ErpError(400, "Khách hàng và số tiền thanh toán là bắt buộc");
     if (!["bankTransfer", "cash", "other"].includes(method)) throw new ErpError(400, "Phương thức thanh toán không hợp lệ");
-    if (method === "bankTransfer" && !proofImageUrl.trim()) throw new ErpError(400, "Thanh toán chuyển khoản cần ảnh giao dịch");
+    const proofUrls = (Array.isArray(proofImageUrls) ? proofImageUrls : []).filter((url) => typeof url === "string" && url.trim()).map((url) => url.trim());
+    if (!proofUrls.length && proofImageUrl.trim()) proofUrls.push(proofImageUrl.trim());
+    if (method === "bankTransfer" && !proofUrls.length) throw new ErpError(400, "Thanh toán chuyển khoản cần ít nhất một ảnh giao dịch");
     const date = parseMovementDate(paymentDate);
     const customerKey = customerKeyOf(customerName);
 
@@ -360,7 +362,8 @@ export const createCustomerPayment = async (req, res) => {
         amount: roundMoney(amount),
         paymentDate: date,
         method,
-        proofImageUrl: method === "bankTransfer" ? proofImageUrl.trim() : "",
+        proofImageUrl: method === "bankTransfer" ? proofUrls[0] : "",
+        proofImageUrls: method === "bankTransfer" ? proofUrls : [],
         reference,
         note,
         allocations,

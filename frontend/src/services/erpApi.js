@@ -114,10 +114,10 @@ export async function createErpPayment(payload) {
   return (await response.json()).data
 }
 
-export async function uploadErpPaymentProof(file) {
-  if (!file) throw new TypeError('Vui lòng chọn ảnh giao dịch chuyển khoản.')
+export async function uploadErpPaymentProof(files) {
+  if (!files?.length) throw new TypeError('Vui lòng chọn ảnh giao dịch chuyển khoản.')
   const formData = new FormData()
-  formData.append('image', file)
+  files.forEach((file) => formData.append('images', file))
   const response = await erpRequest('/erp/uploads/payment-proof', { method: 'POST', body: formData })
-  return (await response.json()).data
+  return (await response.json()).data || []
 }

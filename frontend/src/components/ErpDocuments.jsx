@@ -31,8 +31,8 @@ function CustomerDebtPanel({ onBack }) {
   const [amount, setAmount] = useState('')
   const [paymentDate, setPaymentDate] = useState(today())
   const [method, setMethod] = useState('bankTransfer')
-  const [proofFile, setProofFile] = useState(null)
-  const [proofPreview, setProofPreview] = useState('')
+  const [proofFiles, setProofFiles] = useState([])
+  const [proofPreviews, setProofPreviews] = useState([])
   const [reference, setReference] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -45,11 +45,10 @@ function CustomerDebtPanel({ onBack }) {
     return () => { active = false }
   }, [notice])
   useEffect(() => {
-    if (!proofFile) { setProofPreview(''); return undefined }
-    const url = URL.createObjectURL(proofFile)
-    setProofPreview(url)
-    return () => URL.revokeObjectURL(url)
-  }, [proofFile])
+    const urls = proofFiles.map((file) => URL.createObjectURL(file))
+    setProofPreviews(urls)
+    return () => urls.forEach((url) => URL.revokeObjectURL(url))
+  }, [proofFiles])
 
   const openCustomer = async (customer) => {
     setSelected(customer)
@@ -64,19 +63,21 @@ function CustomerDebtPanel({ onBack }) {
     setError('')
     setNotice('')
     try {
-      const proofImageUrl = method === 'bankTransfer' ? (await uploadErpPaymentProof(proofFile)).secure_url : ''
+      const uploadedProofs = method === 'bankTransfer' ? await uploadErpPaymentProof(proofFiles) : []
+      const proofImageUrls = uploadedProofs.map((image) => image.secure_url)
       await createErpPayment({
         customerName: selected.customerName,
         customerPhone: selected.customerPhone,
         amount: Number(amount),
         paymentDate: new Date(`${paymentDate}T12:00:00+07:00`).toISOString(),
         method,
-        proofImageUrl,
+        proofImageUrl: proofImageUrls[0] || '',
+        proofImageUrls,
         reference,
         note,
       })
       setAmount('')
-      setProofFile(null)
+      setProofFiles([])
       setReference('')
       setNote('')
       const [updatedCustomers, updatedPayments] = await Promise.all([
@@ -105,13 +106,13 @@ function CustomerDebtPanel({ onBack }) {
           <label>Số tiền<input type="number" min="0.01" max={selected.balance} step="0.01" required value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
           <label>Ngày thanh toán<input type="date" required value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} /></label>
           <label>Phương thức<select value={method} onChange={(event) => setMethod(event.target.value)}><option value="bankTransfer">Chuyển khoản</option><option value="cash">Tiền mặt</option><option value="other">Khác</option></select></label>
-          {method === 'bankTransfer' && <label>Ảnh giao dịch<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" required onChange={(event) => setProofFile(event.target.files?.[0] || null)} />{proofPreview && <img className="erp-payment-preview" src={proofPreview} alt="Ảnh giao dịch chuyển khoản" />}</label>}
+          {method === 'bankTransfer' && <label>Ảnh giao dịch (có thể chọn nhiều, tối đa 10)<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple required onChange={(event) => { const files = Array.from(event.target.files || []); if (files.length > 10) { setError('Chỉ được chọn tối đa 10 ảnh cho mỗi lần thanh toán.'); setProofFiles([]); return } setError(''); setProofFiles(files) }} />{proofPreviews.length > 0 && <div className="erp-payment-previews">{proofPreviews.map((preview, index) => <img key={preview} className="erp-payment-preview" src={preview} alt={`Ảnh giao dịch ${index + 1}`} />)}</div>}</label>}
           <label>Mã giao dịch<input value={reference} onChange={(event) => setReference(event.target.value)} /></label>
           <label>Ghi chú<input value={note} onChange={(event) => setNote(event.target.value)} /></label>
           <button className="erp-button erp-button--dark" disabled={busy}>{busy ? 'Đang ghi nhận...' : 'Ghi nhận thanh toán'}</button>
         </form>
         <h4>Lịch sử thanh toán</h4>
-        {payments.length === 0 ? <p className="erp-empty">Chưa có thanh toán.</p> : <div className="erp-payment-history">{payments.map((payment) => <p key={payment._id}><span><b>{printedDate(new Date(payment.paymentDate).toISOString().slice(0, 10))} · {payment.method === 'bankTransfer' ? 'Chuyển khoản' : payment.method === 'cash' ? 'Tiền mặt' : 'Khác'}</b><small>{payment.reference || 'Không có mã giao dịch'}{payment.proofImageUrl && <> · <a href={payment.proofImageUrl} target="_blank" rel="noreferrer">Ảnh chứng từ</a></>}</small></span><strong>{money(payment.amount)} đ</strong></p>)}</div>}
+        {payments.length === 0 ? <p className="erp-empty">Chưa có thanh toán.</p> : <div className="erp-payment-history">{payments.map((payment) => { const proofUrls = payment.proofImageUrls?.length ? payment.proofImageUrls : payment.proofImageUrl ? [payment.proofImageUrl] : []; return <p key={payment._id}><span><b>{printedDate(new Date(payment.paymentDate).toISOString().slice(0, 10))} · {payment.method === 'bankTransfer' ? 'Chuyển khoản' : payment.method === 'cash' ? 'Tiền mặt' : 'Khác'}</b><small>{payment.reference || 'Không có mã giao dịch'}{proofUrls.map((url, index) => <span key={url}> · <a href={url} target="_blank" rel="noreferrer">Ảnh {index + 1}</a></span>)}</small></span><strong>{money(payment.amount)} đ</strong></p> })}</div>}
       </>}</div>
     </div>
   </section>
