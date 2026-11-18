@@ -34,6 +34,7 @@ const erpDocumentSchema = new mongoose.Schema({
   oldDebt: { type: Number, min: 0, default: 0 },
   depositAmount: { type: Number, min: 0, default: 0 },
   paidAmount: { type: Number, min: 0, default: 0 },
+  debtResetAmount: { type: Number, min: 0, default: 0 },
   isDebt: { type: Boolean, default: false },
   paymentMethod: { type: String, enum: ["bankTransfer", "cash", "mixed"], default: "cash" },
   cashPaidAmount: { type: Number, min: 0, default: 0 },

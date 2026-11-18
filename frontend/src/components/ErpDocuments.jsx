@@ -54,7 +54,7 @@ const numberToVietnameseWords = (value) => {
 const newForm = (type = 'salesInvoice') => ({
   documentNumber: newNumber(type), documentDate: today(), deliveryDate: '', customerName: '', customerPhone: '',
   sourceDocumentId: '', sourceDocumentNumber: '',
-  customerAddress: '', deliveryAddress: '', issuerName: '', imageUrl: '', note: '', oldDebt: '', depositAmount: '', paidAmount: '',
+  customerAddress: '', deliveryAddress: '', issuerName: '', imageUrl: '', note: '', oldDebt: '', depositAmount: '', paidAmount: '', debtResetAmount: 0,
   priceType: 'retail', isDebt: false, documentMode: 'standard', paymentMethod: 'cash', cashPaidAmount: '', bankPaidAmount: '',
   lines: [newLine()],
 })
@@ -180,7 +180,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const issuedBeforeAmount = linkedInvoice?.fulfillmentStatus === 'pending' ? 0 : Number(linkedInvoice?.totalAmount || 0)
   const linkedInvoicePaid = linkedInvoice?.fulfillmentStatus === 'pending' ? 0 : Number(linkedInvoice?.paidAmount || 0)
   const invoicePaymentDue = linkedInvoice
-    ? Math.max(0, roundMoney(issuedBeforeAmount + issueLineAmount + Number(linkedInvoice.oldDebt || 0) - Number(linkedInvoice.depositAmount || 0) - linkedInvoicePaid))
+    ? Math.max(0, roundMoney(issuedBeforeAmount + issueLineAmount + Number(linkedInvoice.oldDebt || 0) - Number(linkedInvoice.depositAmount || 0) - Number(linkedInvoice.debtResetAmount || 0) - linkedInvoicePaid))
     : 0
   const matchingProducts = products.filter((product) => `${product.name} ${product.sku}`.toLocaleLowerCase('vi-VN').includes(productSearch.trim().toLocaleLowerCase('vi-VN')))
 
@@ -198,6 +198,16 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   }, [])
 
   const normalizeCustomerName = (name) => name.trim().toLocaleLowerCase('vi-VN').normalize('NFC')
+  const rememberedCustomerNames = useMemo(() => {
+    const seen = new Set()
+    return [...documents.map((document) => document.customerName), ...customerDebts.map((customer) => customer.customerName)]
+      .filter((name) => {
+        const normalized = String(name || '').trim().toLocaleLowerCase('vi-VN').normalize('NFC')
+        if (!normalized || seen.has(normalized)) return false
+        seen.add(normalized)
+        return true
+      })
+  }, [documents, customerDebts])
   const matchingCustomerDebt = form.customerName.trim()
     ? customerDebts.find((customer) => normalizeCustomerName(customer.customerName) === normalizeCustomerName(form.customerName))
     : null
@@ -433,7 +443,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
             {type === 'salesInvoice' && readOnly && form.fulfillmentStatus && <p className="erp-customer-debt-hint erp-form-wide">Trạng thái: <b>{form.fulfillmentStatus === 'complete' ? 'Đã chốt đủ số lượng' : form.fulfillmentStatus === 'partial' ? 'Đã xuất một phần' : 'Yêu cầu tạm, chưa chốt số lượng'}</b></p>}
             <label>Số chứng từ<input disabled={readOnly} value={form.documentNumber} onChange={(event) => change('documentNumber', event.target.value)} /></label>
             <label>Ngày lập<input type="date" disabled={readOnly} value={form.documentDate} onChange={(event) => change('documentDate', event.target.value)} /></label>
-            <label>Khách hàng<input disabled={readOnly} required value={form.customerName} onChange={(event) => change('customerName', event.target.value)} onBlur={(event) => { const match = customerDebts.find((item) => normalizeCustomerName(item.customerName) === normalizeCustomerName(event.target.value)); if (match && !form.customerPhone) change('customerPhone', match.customerPhone || '') }} /></label>
+            <label>Khách hàng<input list="erp-customer-name-options" disabled={readOnly} required value={form.customerName} onChange={(event) => change('customerName', event.target.value)} onBlur={(event) => { const match = customerDebts.find((item) => normalizeCustomerName(item.customerName) === normalizeCustomerName(event.target.value)); if (match && !form.customerPhone) change('customerPhone', match.customerPhone || '') }} /><datalist id="erp-customer-name-options">{rememberedCustomerNames.map((name) => <option key={name} value={name} />)}</datalist></label>
             {!readOnly && <button type="button" className="erp-button erp-button--outline" onClick={() => setCustomerAccountOpen(true)}>＋ Tạo tài khoản khách hàng</button>}
             {matchingCustomerDebt && <p className="erp-customer-debt-hint" aria-live="polite">Dư nợ hiện tại: <b>{money(matchingCustomerDebt.balance)} đ</b> · sau hóa đơn này: <b>{money(projectedBalance)} đ</b></p>}
             <details className="erp-advanced-fields erp-form-wide"><summary>Thông tin giao hàng, thanh toán và ghi chú</summary><div className="erp-form-grid">
@@ -491,7 +501,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
           {Array.from({ length: Math.max(0, 25 - form.lines.length) }, (_, index) => <tr className="erp-paper__blank-row" key={`blank-${index}`}><td>{form.lines.length + index + 1}</td><td /><td /><td /><td />{form.documentMode !== 'quantityDebt' && <><td /><td /></>}</tr>)}
         </tbody></table>
         {form.isDebt && <p className="erp-paper__debt-stamp">GHI NỢ KHÁCH HÀNG</p>}
-        {form.documentMode === 'standard' && <><div className="erp-paper__totals"><p><span>Phải thanh toán:</span><strong>{form.isDebt ? '' : money(total + Number(form.oldDebt || 0))}</strong></p><p><span>Nợ cũ:</span><strong>{form.isDebt ? '' : money(form.oldDebt)}</strong></p><p><span>Tổng cộng:</span><strong>{form.isDebt ? '' : money(total + Number(form.oldDebt || 0))}</strong></p><p><span>Tiền cọc (đã trừ):</span><strong>{form.isDebt ? '' : `-${money(form.depositAmount)}`}</strong></p><p><span>Đã thanh toán:</span><strong>{form.isDebt ? '' : money(form.paidAmount)}</strong></p><p><span>Còn lại:</span><strong>{form.isDebt ? '' : money(Math.max(0, total + Number(form.oldDebt || 0) - Number(form.depositAmount || 0) - Number(form.paidAmount || 0)))}</strong></p></div>
+        {form.documentMode === 'standard' && <><div className="erp-paper__totals"><p><span>Phải thanh toán:</span><strong>{form.isDebt ? '' : money(total + Number(form.oldDebt || 0))}</strong></p><p><span>Nợ cũ:</span><strong>{form.isDebt ? '' : money(form.oldDebt)}</strong></p><p><span>Tổng cộng:</span><strong>{form.isDebt ? '' : money(total + Number(form.oldDebt || 0))}</strong></p><p><span>Tiền cọc (đã trừ):</span><strong>{form.isDebt ? '' : `-${money(form.depositAmount)}`}</strong></p><p><span>Đã thanh toán:</span><strong>{form.isDebt ? '' : money(form.paidAmount)}</strong></p>{Number(form.debtResetAmount || 0) > 0 && <p><span>Đã xóa dư nợ:</span><strong>{form.isDebt ? '' : money(form.debtResetAmount)}</strong></p>}<p><span>Còn lại:</span><strong>{form.isDebt ? '' : money(Math.max(0, total + Number(form.oldDebt || 0) - Number(form.depositAmount || 0) - Number(form.paidAmount || 0) - Number(form.debtResetAmount || 0)))}</strong></p></div>
         <p className="erp-paper__words"><b>Đã thanh toán bằng chữ:</b><span>{form.isDebt ? '' : numberToVietnameseWords(Number(form.cashPaidAmount || 0) + Number(form.bankPaidAmount || 0) || Number(form.paidAmount || 0))}</span></p></>}
         {!form.isDebt && <p className="erp-paper__payment-method">Hình thức thanh toán: {form.paymentMethod === 'bankTransfer' ? 'Chuyển khoản' : form.paymentMethod === 'mixed' ? 'Chuyển khoản và tiền mặt' : 'Tiền mặt'}</p>}
         <p className="erp-paper__note"><b>Ghi chú:</b><span>{form.note || 'Cảm ơn quý khách đã ủng hộ cửa hàng.'}</span></p>

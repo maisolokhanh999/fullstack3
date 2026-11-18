@@ -18,6 +18,7 @@ const movementActor = process.env.ERP_ACTOR_NAME || "erp-api";
 const validAmount = (value) => Number.isFinite(value) && value >= 0;
 const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 const customerKeyOf = (name) => name.trim().toLocaleLowerCase("vi-VN").normalize("NFC");
+const isWalkInCustomer = (name) => name.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("vi-VN").includes("khach le");
 
 const respondError = (res, error, req) => sendErpError(res, error, req, error.code === 11000 ? "Dữ liệu bị trùng" : "Lỗi xử lý ERP");
 
@@ -213,7 +214,7 @@ export const createErpDocument = async (req, res) => {
         const paymentAmount = roundMoney(cashPaidAmount + bankPaidAmount);
         const paymentMethod = body.paymentMethod || sourceDocument.paymentMethod || "cash";
         const previouslyPaid = sourceDocument.fulfillmentStatus === "pending" ? 0 : sourceDocument.paidAmount;
-        const outstanding = roundMoney(Math.max(0, totalAmount + sourceDocument.oldDebt - sourceDocument.depositAmount - previouslyPaid));
+        const outstanding = roundMoney(Math.max(0, totalAmount + sourceDocument.oldDebt - sourceDocument.depositAmount - previouslyPaid - (sourceDocument.debtResetAmount || 0)));
         if (paymentAmount > 0 && paymentMethod === "mixed" && (!cashPaidAmount || !bankPaidAmount)) throw new ErpError(400, "Thanh toán kết hợp cần có cả tiền mặt và chuyển khoản");
         if ((paymentMethod === "cash" && bankPaidAmount > 0) || (paymentMethod === "bankTransfer" && cashPaidAmount > 0)) throw new ErpError(400, "Số tiền không khớp hình thức thanh toán đã chọn");
         if (paymentAmount > outstanding + 0.005) throw new ErpError(400, "Tiền thanh toán vượt quá số còn phải trả sau khi trừ tiền cọc");
@@ -227,6 +228,29 @@ export const createErpDocument = async (req, res) => {
         sourceDocument.bankPaidAmount += bankPaidAmount;
         sourceDocument.paidAmount = previouslyPaid + paymentAmount;
         await sourceDocument.save({ session });
+
+        if (paymentAmount > 0 && isWalkInCustomer(sourceDocument.customerName)) {
+          const walkInDebts = await ErpDocument.find({
+            type: "salesInvoice",
+            isDebt: true,
+            fulfillmentStatus: { $ne: "pending" },
+            customerKey: sourceDocument.customerKey,
+          }).session(session);
+          const invoiceIds = walkInDebts.map((invoice) => invoice._id);
+          const paymentGroups = invoiceIds.length ? await ErpPayment.aggregate([
+            { $unwind: "$allocations" },
+            { $match: { "allocations.documentId": { $in: invoiceIds } } },
+            { $group: { _id: "$allocations.documentId", paid: { $sum: "$allocations.amount" } } },
+          ]).session(session) : [];
+          const paidByInvoice = new Map(paymentGroups.map((row) => [String(row._id), row.paid]));
+          for (const invoice of walkInDebts) {
+            const balance = roundMoney(Math.max(0, invoice.totalAmount + invoice.oldDebt - invoice.depositAmount - invoice.paidAmount - (invoice.debtResetAmount || 0) - (paidByInvoice.get(String(invoice._id)) || 0)));
+            if (balance > 0.005) {
+              invoice.debtResetAmount = roundMoney((invoice.debtResetAmount || 0) + balance);
+              await invoice.save({ session });
+            }
+          }
+        }
       }
 
       for (const productId of affectedProductIds) await rebuildProductStock(productId, session);
@@ -286,7 +310,7 @@ export const getCustomerDebts = async (req, res) => {
     const customers = new Map();
     for (const document of docs) {
       const key = customerKeyOf(document.customerName);
-      const balance = roundMoney(document.totalAmount + document.oldDebt - document.depositAmount - document.paidAmount - (paidByDocument.get(String(document._id)) || 0));
+      const balance = roundMoney(document.totalAmount + document.oldDebt - document.depositAmount - document.paidAmount - (document.debtResetAmount || 0) - (paidByDocument.get(String(document._id)) || 0));
       const customer = customers.get(key) || {
         customerKey: key,
         customerName: document.customerName,
@@ -363,7 +387,7 @@ export const createCustomerPayment = async (req, res) => {
       const allocations = [];
       for (const invoice of invoices) {
         if (remaining <= 0) break;
-        const outstanding = roundMoney(invoice.totalAmount + invoice.oldDebt - invoice.depositAmount - invoice.paidAmount - (paidByDocument.get(String(invoice._id)) || 0));
+        const outstanding = roundMoney(invoice.totalAmount + invoice.oldDebt - invoice.depositAmount - invoice.paidAmount - (invoice.debtResetAmount || 0) - (paidByDocument.get(String(invoice._id)) || 0));
         if (outstanding <= 0) continue;
         const applied = Math.min(outstanding, remaining);
         allocations.push({ documentId: invoice._id, amount: applied });
