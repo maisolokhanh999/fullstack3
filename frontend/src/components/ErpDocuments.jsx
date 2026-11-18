@@ -16,10 +16,45 @@ const money = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumFra
 const quantityText = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 })
 const printedDate = (value) => value ? new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${value}T12:00:00`)) : '—'
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100
+const numberToVietnameseWords = (value) => {
+  const number = Math.max(0, Math.round(Number(value) || 0))
+  if (!number) return 'Không đồng'
+  const digits = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín']
+  const scales = ['', 'nghìn', 'triệu', 'tỷ', 'nghìn tỷ', 'triệu tỷ']
+  const readGroup = (group, full) => {
+    const hundreds = Math.floor(group / 100)
+    const tens = Math.floor((group % 100) / 10)
+    const units = group % 10
+    const words = []
+    if (hundreds || full) words.push(`${digits[hundreds]} trăm`)
+    if (tens > 1) words.push(`${digits[tens]} mươi`)
+    else if (tens === 1) words.push('mười')
+    else if (units && (hundreds || full)) words.push('lẻ')
+    if (units) {
+      if (tens > 1 && units === 1) words.push('mốt')
+      else if (tens > 0 && units === 5) words.push('lăm')
+      else words.push(digits[units])
+    }
+    return words.join(' ')
+  }
+  const groups = []
+  let remaining = number
+  while (remaining > 0) {
+    groups.push(remaining % 1000)
+    remaining = Math.floor(remaining / 1000)
+  }
+  const parts = []
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    if (!groups[index]) continue
+    const phrase = readGroup(groups[index], index < groups.length - 1 && groups[index] < 100)
+    parts.push(`${phrase}${scales[index] ? ` ${scales[index]}` : ''}`)
+  }
+  return `${parts.join(' ')} đồng`.replace(/^./, (character) => character.toLocaleUpperCase('vi-VN'))
+}
 const newForm = (type = 'salesInvoice') => ({
   documentNumber: newNumber(type), documentDate: today(), deliveryDate: '', customerName: '', customerPhone: '',
   sourceDocumentId: '', sourceDocumentNumber: '',
-  customerAddress: '', deliveryAddress: '', issuerName: '', imageUrl: '', note: '', oldDebt: '', depositAmount: '', paidAmount: '', paymentInWords: '',
+  customerAddress: '', deliveryAddress: '', issuerName: '', imageUrl: '', note: '', oldDebt: '', depositAmount: '', paidAmount: '',
   priceType: 'retail', isDebt: false, documentMode: 'standard', paymentMethod: 'cash', cashPaidAmount: '', bankPaidAmount: '',
   lines: [newLine()],
 })
@@ -133,6 +168,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const [notice, setNotice] = useState('')
   const [customerAccountOpen, setCustomerAccountOpen] = useState(false)
   const [customerAccount, setCustomerAccount] = useState({ name: '', phone: '', address: '' })
+  const [invoicePaymentOpen, setInvoicePaymentOpen] = useState(false)
   const [productSearch, setProductSearch] = useState('')
   const [selectedProductIds, setSelectedProductIds] = useState([])
 
@@ -261,8 +297,8 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
         deliveryDate: invoice.deliveryDate ? new Date(invoice.deliveryDate).toISOString().slice(0, 10) : '',
         issuerName: current.issuerName || 'Kho xuất hàng',
         paymentMethod: invoice.paymentMethod || 'cash',
-        cashPaidAmount: '',
-        bankPaidAmount: '',
+        cashPaidAmount: invoice.cashPaidAmount || '',
+        bankPaidAmount: invoice.bankPaidAmount || '',
         imageUrl: invoice.imageUrl || '',
         note: `Xuất theo hóa đơn ${invoice.documentNumber}. ${invoice.note || ''}`.trim(),
         lines,
@@ -283,6 +319,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const reset = () => {
     setType('salesInvoice')
     setForm(newForm())
+    setInvoicePaymentOpen(false)
     setLinkedIssues([])
     setProductSearch('')
     setSelectedProductIds([])
@@ -298,12 +335,15 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
       const linked = document.type === 'salesInvoice' ? await getErpDocuments({ sourceDocumentId: document._id }).catch(() => []) : []
       setLinkedIssues(linked)
       setType(document.type)
+      setInvoicePaymentOpen(false)
       setForm({
         ...document,
         documentDate: new Date(document.documentDate).toISOString().slice(0, 10),
         deliveryDate: document.deliveryDate ? new Date(document.deliveryDate).toISOString().slice(0, 10) : '',
         oldDebt: document.oldDebt || '',
         paidAmount: document.paidAmount || '',
+        cashPaidAmount: document.cashPaidAmount || '',
+        bankPaidAmount: document.bankPaidAmount || '',
         lines: document.lines.map((line) => ({ ...line, key: `saved-${line.movementId || line.sku}-${Math.random()}` })),
       })
       setReadOnly(true)
@@ -326,8 +366,8 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
           ? Number(form.paidAmount || 0)
           : roundMoney(total + Number(form.oldDebt || 0) - Number(form.depositAmount || 0)),
         paymentMethod: form.paymentMethod || 'cash',
-        cashPaidAmount: type === 'stockIssue' && ['cash', 'mixed'].includes(form.paymentMethod) ? Number(form.cashPaidAmount || 0) : 0,
-        bankPaidAmount: type === 'stockIssue' && ['bankTransfer', 'mixed'].includes(form.paymentMethod) ? Number(form.bankPaidAmount || 0) : 0,
+        cashPaidAmount: ['cash', 'mixed'].includes(form.paymentMethod) ? Number(form.cashPaidAmount || 0) : 0,
+        bankPaidAmount: ['bankTransfer', 'mixed'].includes(form.paymentMethod) ? Number(form.bankPaidAmount || 0) : 0,
         documentDate: new Date(`${form.documentDate}T12:00:00+07:00`).toISOString(),
         deliveryDate: form.deliveryDate ? new Date(`${form.deliveryDate}T12:00:00+07:00`).toISOString() : '',
         lines: form.lines.map((formLine) => {
@@ -409,10 +449,10 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
               <label>Hình thức thanh toán<select disabled={readOnly} value={form.paymentMethod || 'cash'} onChange={(event) => change('paymentMethod', event.target.value)}><option value="bankTransfer">Chuyển khoản</option><option value="cash">Tiền mặt</option><option value="mixed">Chuyển khoản và tiền mặt</option></select></label>
               <label>Nợ cũ<input type="number" min="0" step="0.01" disabled={readOnly} value={form.oldDebt} onChange={(event) => change('oldDebt', event.target.value)} /></label>
               <label>Tiền cọc<input type="number" min="0" step="0.01" disabled={readOnly} value={form.depositAmount} onChange={(event) => change('depositAmount', event.target.value)} /></label>
-              <label className="erp-form-wide">Thanh toán bằng chữ<input disabled={readOnly} value={form.paymentInWords} onChange={(event) => change('paymentInWords', event.target.value)} /></label>
             </>}
             <label className="erp-form-wide">Ghi chú<input disabled={readOnly} value={form.note} onChange={(event) => change('note', event.target.value)} /></label>
             </div></details>
+            {type === 'salesInvoice' && !readOnly && <section className="erp-invoice-payment-entry erp-form-wide"><button type="button" className="erp-button erp-button--outline" aria-expanded={invoicePaymentOpen} onClick={() => setInvoicePaymentOpen((open) => !open)}>{invoicePaymentOpen ? 'Ẩn thanh toán' : '＋ Thanh toán'}</button>{invoicePaymentOpen && <div className="erp-invoice-payment-entry__fields"><p>Số tiền sẽ được ghi nhận khi chốt phiếu xuất kho.</p>{['cash', 'mixed'].includes(form.paymentMethod) && <label>Tiền mặt<input type="number" min="0" step="0.01" value={form.cashPaidAmount} onChange={(event) => change('cashPaidAmount', event.target.value)} /></label>}{['bankTransfer', 'mixed'].includes(form.paymentMethod) && <label>Chuyển khoản<input type="number" min="0" step="0.01" value={form.bankPaidAmount} onChange={(event) => change('bankPaidAmount', event.target.value)} /></label>}</div>}</section>}
           </div>
           {type === 'stockIssue' && !readOnly && linkedInvoice && invoicePaymentDue > 0.005 && <section className="erp-settlement-panel"><div><h3>Thanh toán và chốt hóa đơn</h3><p>Tiền cọc {money(linkedInvoice.depositAmount)} đ đã được khấu trừ. Còn phải thanh toán <strong>{money(invoicePaymentDue)} đ</strong>.</p></div><label>Hình thức thanh toán<select value={form.paymentMethod || linkedInvoice.paymentMethod || 'cash'} onChange={(event) => change('paymentMethod', event.target.value)}><option value="bankTransfer">Chuyển khoản</option><option value="cash">Tiền mặt</option><option value="mixed">Chuyển khoản và tiền mặt</option></select></label>{['cash', 'mixed'].includes(form.paymentMethod) && <label>Tiền mặt<input type="number" min="0" max={invoicePaymentDue} step="0.01" value={form.cashPaidAmount} onChange={(event) => change('cashPaidAmount', event.target.value)} /></label>}{['bankTransfer', 'mixed'].includes(form.paymentMethod) && <label>Chuyển khoản<input type="number" min="0" max={invoicePaymentDue} step="0.01" value={form.bankPaidAmount} onChange={(event) => change('bankPaidAmount', event.target.value)} /></label>}</section>}
           <div className="erp-document-line-editor">
@@ -452,7 +492,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
         </tbody></table>
         {form.isDebt && <p className="erp-paper__debt-stamp">GHI NỢ KHÁCH HÀNG</p>}
         {form.documentMode === 'standard' && <><div className="erp-paper__totals"><p><span>Phải thanh toán:</span><strong>{form.isDebt ? '' : money(total + Number(form.oldDebt || 0))}</strong></p><p><span>Nợ cũ:</span><strong>{form.isDebt ? '' : money(form.oldDebt)}</strong></p><p><span>Tổng cộng:</span><strong>{form.isDebt ? '' : money(total + Number(form.oldDebt || 0))}</strong></p><p><span>Tiền cọc (đã trừ):</span><strong>{form.isDebt ? '' : `-${money(form.depositAmount)}`}</strong></p><p><span>Đã thanh toán:</span><strong>{form.isDebt ? '' : money(form.paidAmount)}</strong></p><p><span>Còn lại:</span><strong>{form.isDebt ? '' : money(Math.max(0, total + Number(form.oldDebt || 0) - Number(form.depositAmount || 0) - Number(form.paidAmount || 0)))}</strong></p></div>
-        <p className="erp-paper__words"><b>Chưa thanh toán bằng chữ:</b><span>{form.isDebt ? '' : form.paymentInWords || '........................................................................................................'}</span></p></>}
+        <p className="erp-paper__words"><b>Đã thanh toán bằng chữ:</b><span>{form.isDebt ? '' : numberToVietnameseWords(Number(form.cashPaidAmount || 0) + Number(form.bankPaidAmount || 0) || Number(form.paidAmount || 0))}</span></p></>}
         {!form.isDebt && <p className="erp-paper__payment-method">Hình thức thanh toán: {form.paymentMethod === 'bankTransfer' ? 'Chuyển khoản' : form.paymentMethod === 'mixed' ? 'Chuyển khoản và tiền mặt' : 'Tiền mặt'}</p>}
         <p className="erp-paper__note"><b>Ghi chú:</b><span>{form.note || 'Cảm ơn quý khách đã ủng hộ cửa hàng.'}</span></p>
         <p className="erp-paper__return-policy">Chỉ đổi trả hàng trong vòng 1 tuần kể từ ngày mua (không đổi hoặc trả tấm in HV).</p>
