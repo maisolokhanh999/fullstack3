@@ -11,6 +11,11 @@ const erpProductSchema = new mongoose.Schema(
     storePrice: { type: Number, min: 0, default: 0 },
     weightPerUnit: { type: Number, min: 0, default: 0 },
     currentStock: { type: Number, min: 0, default: 0 },
+    warehouseStocks: {
+      "thanh-phu": { type: Number, min: 0, default: 0 },
+      "duc-hoa": { type: Number, min: 0, default: 0 },
+      "ben-luc": { type: Number, min: 0, default: 0 },
+    },
     reorderLevel: { type: Number, min: 0, default: 0 },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },

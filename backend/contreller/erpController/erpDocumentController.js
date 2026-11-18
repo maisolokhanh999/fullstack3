@@ -3,12 +3,14 @@ import ErpDocument from "../../model/erpDocument.js";
 import ErpMovement from "../../model/erpMovement.js";
 import ErpPayment from "../../model/erpPayment.js";
 import ErpProduct from "../../model/erpProduct.js";
+import ErpCustomer from "../../model/erpCustomer.js";
 import {
   buildMonthRange,
   ErpError,
   parseMovementDate,
   rebuildProductStock,
   withErpTransaction,
+  validateWarehouse,
 } from "../../services/erpInventoryService.js";
 
 const movementActor = process.env.ERP_ACTOR_NAME || "erp-api";
@@ -33,6 +35,7 @@ const validateDocument = (body) => {
     throw new ErpError(400, "Chứng từ cần từ 1 đến 100 dòng hàng");
   }
   for (const line of body.lines) {
+    if (body.type === "stockIssue") validateWarehouse(line.warehouse || body.warehouse || "thanh-phu");
     if (!mongoose.isValidObjectId(line.productId)) throw new ErpError(400, "Có sản phẩm không hợp lệ");
     if (!Number.isFinite(line.quantity) || line.quantity <= 0 || Math.round(line.quantity * 1000) !== line.quantity * 1000) {
       throw new ErpError(400, "Số lượng phải lớn hơn 0 và tối đa 3 chữ số thập phân");
@@ -65,11 +68,12 @@ export const createErpDocument = async (req, res) => {
       const lines = body.lines.map((line) => {
         const product = productById.get(String(line.productId));
         const quantity = line.quantity;
-        const unitPrice = body.type === "salesInvoice"
+        const unitPrice = body.type === "salesInvoice" && body.documentMode !== "noPrice"
           ? (body.priceType === "store" ? product.storePrice : product.salePrice)
           : 0;
         return {
           productId: product._id,
+          warehouse: body.type === "stockIssue" ? line.warehouse || body.warehouse || "thanh-phu" : undefined,
           sku: product.sku,
           productName: product.name,
           unit: product.unit,
@@ -110,6 +114,7 @@ export const createErpDocument = async (req, res) => {
           ? (body.isDebt ? body.paidAmount ?? 0 : roundMoney(totalAmount + (body.oldDebt ?? 0) - depositAmount))
           : 0,
         priceType,
+        documentMode: ["standard", "noPrice", "quantityDebt"].includes(body.documentMode) ? body.documentMode : "standard",
         paymentInWords: body.type === "salesInvoice" ? body.paymentInWords || "" : "",
         totalAmount,
         totalWeight,
@@ -120,9 +125,11 @@ export const createErpDocument = async (req, res) => {
       const affectedProductIds = new Set();
       for (let index = 0; index < lines.length; index += 1) {
         const line = lines[index];
+        if (body.type !== "stockIssue") continue;
         const [movement] = await ErpMovement.create([{
           documentId: createdDocument._id,
           productId: line.productId,
+          warehouse: line.warehouse,
           productName: line.productName,
           sku: line.sku,
           type: "issue",
@@ -218,6 +225,16 @@ export const getCustomerDebts = async (req, res) => {
     }
     const result = [...customers.values()].filter((customer) => customer.balance > 0.005).sort((a, b) => b.balance - a.balance);
     res.json({ success: true, data: result });
+  } catch (error) { respondError(res, error); }
+};
+
+export const createErpCustomer = async (req, res) => {
+  try {
+    const { name, phone = "", address = "", note = "" } = req.body;
+    if (!name?.trim()) throw new ErpError(400, "Tên khách hàng là bắt buộc");
+    const customerKey = customerKeyOf(name);
+    const customer = await ErpCustomer.create({ name: name.trim(), customerKey, phone, address, note });
+    res.status(201).json({ success: true, data: customer });
   } catch (error) { respondError(res, error); }
 };
 

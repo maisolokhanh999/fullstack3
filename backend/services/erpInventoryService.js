@@ -10,6 +10,11 @@ export class ErpError extends Error {
 }
 
 export const isMovementType = (type) => ["receipt", "issue", "stocktake"].includes(type);
+export const WAREHOUSES = ["thanh-phu", "duc-hoa", "ben-luc"];
+export const validateWarehouse = (warehouse) => {
+  if (!WAREHOUSES.includes(warehouse)) throw new ErpError(400, "Kho không hợp lệ");
+  return warehouse;
+};
 
 export const parseMovementDate = (value) => {
   const date = new Date(value);
@@ -65,15 +70,18 @@ export const rebuildProductStock = async (productId, session) => {
   const movements = await ErpMovement.find({ productId })
     .sort({ movementDate: 1, createdAt: 1, _id: 1 })
     .session(session);
-  let stock = 0;
+  const stocks = Object.fromEntries(WAREHOUSES.map((warehouse) => [warehouse, 0]));
   const operations = [];
 
   for (const movement of movements) {
-    const stockBefore = stock;
+    const warehouse = movement.warehouse || "thanh-phu";
+    const stockBefore = stocks[warehouse] || 0;
+    let stock = stockBefore;
     if (movement.type === "receipt") stock += movement.quantity;
     else if (movement.type === "issue") stock -= movement.quantity;
     else stock = movement.quantity;
-    if (stock < 0) throw new ErpError(409, `Lịch sử chứng từ làm tồn của ${product.name} bị âm`);
+    if (stock < 0) throw new ErpError(409, `Kho ${warehouse} không đủ tồn cho ${product.name}`);
+    stocks[warehouse] = stock;
     if (movement.stockBefore !== stockBefore || movement.stockAfter !== stock) {
       operations.push({
         updateOne: {
@@ -85,7 +93,8 @@ export const rebuildProductStock = async (productId, session) => {
   }
 
   if (operations.length) await ErpMovement.bulkWrite(operations, { session });
-  product.currentStock = stock;
+  product.warehouseStocks = stocks;
+  product.currentStock = Object.values(stocks).reduce((sum, value) => sum + value, 0);
   await product.save({ session });
   return product;
 };

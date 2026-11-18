@@ -4,6 +4,13 @@ import ErpDocuments from '../components/ErpDocuments.jsx'
 import '../styles/erp.css'
 
 const labels = { receipt: 'Nhập kho', issue: 'Xuất kho', stocktake: 'Kiểm kê' }
+const warehouses = [['thanh-phu', 'Kho Thanh Phú'], ['duc-hoa', 'Kho Đức Hòa'], ['ben-luc', 'Kho Bến Lức']]
+const warehouseStock = (product, warehouse) => {
+  const stocks = product.warehouseStocks || {}
+  const recordedTotal = (stocks['thanh-phu'] || 0) + (stocks['duc-hoa'] || 0) + (stocks['ben-luc'] || 0)
+  if (!recordedTotal && product.currentStock > 0) return warehouse === 'thanh-phu' ? product.currentStock : 0
+  return stocks[warehouse] || 0
+}
 const currentPeriod = () => {
   const now = new Date()
   return { year: String(now.getFullYear()), month: String(now.getMonth() + 1) }
@@ -67,7 +74,7 @@ function MovementEditor({ products, movement, onClose, onSaved }) {
   const isEditing = Boolean(movement?._id)
   const [form, setForm] = useState({
     productId: movement?.productId?._id || movement?.productId || '',
-    type: movement?.type || 'receipt', quantity: movement?.quantity ?? '',
+    type: movement?.type || 'receipt', quantity: movement?.quantity ?? '', warehouse: movement?.warehouse || 'thanh-phu',
     customerName: movement?.customerName || '', imageUrl: movement?.imageUrl || '',
     reference: movement?.reference || '', note: movement?.note || '',
     movementDate: localInputDate(movement?.movementDate),
@@ -98,6 +105,7 @@ function MovementEditor({ products, movement, onClose, onSaved }) {
         {isEditing && <label>Loại chứng từ<select value={form.type} onChange={(event) => change('type', event.target.value)}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
         <label>Sản phẩm<select required value={form.productId} onChange={(event) => change('productId', event.target.value)}><option value="">Chọn sản phẩm</option>{products.filter((item) => item.isActive || item._id === form.productId).map((item) => <option key={item._id} value={item._id}>{item.name} · {item.sku}</option>)}</select></label>
         <label>{form.type === 'stocktake' ? 'Tồn thực tế' : 'Số lượng'}<input type="number" min="0" step="1" required value={form.quantity} onChange={(event) => change('quantity', event.target.value)} /></label>
+        <label>Kho<select value={form.warehouse} onChange={(event) => change('warehouse', event.target.value)}>{warehouses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>Ngày giờ<input type="datetime-local" required value={form.movementDate} onChange={(event) => change('movementDate', event.target.value)} /></label>
         {form.type === 'issue' && isEditing && <>
           <label>Khách hàng<input required value={form.customerName} onChange={(event) => change('customerName', event.target.value)} /></label>
@@ -118,6 +126,7 @@ const newReceiptLine = () => ({ key: `receipt-${Date.now()}-${receiptLineSequenc
 function ReceiptBatchEditor({ products, onClose, onSaved }) {
   const [lines, setLines] = useState([newReceiptLine()])
   const [movementDate, setMovementDate] = useState(localInputDate())
+  const [warehouse, setWarehouse] = useState('thanh-phu')
   const [reference, setReference] = useState('')
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
@@ -133,6 +142,7 @@ function ReceiptBatchEditor({ products, onClose, onSaved }) {
     try {
       await createErpReceiptBatch({
         movementDate: new Date(movementDate).toISOString(),
+        warehouse,
         reference,
         note,
         lines: lines.map(({ key, ...line }) => ({ ...line, quantity: Number(line.quantity) })),
@@ -148,6 +158,7 @@ function ReceiptBatchEditor({ products, onClose, onSaved }) {
       <header><div><p className="erp-eyebrow">NHẬP KHO · NHIỀU MẶT HÀNG</p><h2 id="receipt-batch-title">Lập phiếu nhập kho</h2></div><button className="erp-icon-button" type="button" aria-label="Đóng" onClick={onClose}>×</button></header>
       <form onSubmit={submit}>
         <div className="erp-form-grid">
+          <label>Kho nhập<select value={warehouse} onChange={(event) => setWarehouse(event.target.value)}>{warehouses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>Ngày giờ nhập<input type="datetime-local" required value={movementDate} onChange={(event) => setMovementDate(event.target.value)} /></label>
           <label>Số phiếu / tham chiếu<input maxLength="100" value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Tự sinh nếu để trống" /></label>
           <label className="erp-form-wide">Ghi chú chung<input maxLength="1000" value={note} onChange={(event) => setNote(event.target.value)} /></label>
@@ -264,8 +275,8 @@ export default function ErpPage() {
 
         {tab === 'products' ? <>
           <div className="erp-table-heading"><div><h2>Danh mục sản phẩm</h2><p>Thông tin hàng hóa và số tồn hiện tại</p></div><button className="erp-button erp-button--outline" type="button" onClick={() => setProductEditor({})}>＋ Thêm sản phẩm</button></div>
-          <div className="erp-table-scroll"><table><thead><tr><th>SKU</th><th>Tên sản phẩm</th><th>Nhóm</th><th>Đơn vị</th><th>Giá bán lẻ</th><th>Giá cửa hàng</th><th>Kg / đơn vị</th><th>Tồn hiện tại</th><th>Mức tối thiểu</th><th>Trạng thái</th><th /></tr></thead><tbody>{products.map((product) => <tr key={product._id}><td className="erp-mono">{product.sku}</td><td><strong>{product.name}</strong></td><td>{product.category || '—'}</td><td>{product.unit}</td><td>{Number(product.salePrice || 0).toLocaleString('vi-VN')}</td><td>{Number(product.storePrice || 0).toLocaleString('vi-VN')}</td><td>{Number(product.weightPerUnit || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 })}</td><td className={product.currentStock <= product.reorderLevel ? 'erp-stock-low' : ''}>{product.currentStock}</td><td>{product.reorderLevel}</td><td><span className={product.isActive ? 'erp-status erp-status--active' : 'erp-status'}>{product.isActive ? 'Đang bán' : 'Ngừng bán'}</span></td><td><button className="erp-text-button" type="button" onClick={() => setProductEditor(product)}>Chỉnh sửa</button></td></tr>)}</tbody></table></div>
-        </> : <div className="erp-table-scroll"><table><thead><tr><th>Ngày giờ</th><th>Loại</th><th>SKU / Sản phẩm</th><th>Số lượng</th><th>Tồn trước → sau</th><th>Khách hàng</th><th>Ảnh hàng xuất</th><th>Tham chiếu / ghi chú</th><th /></tr></thead><tbody>{movements.map((item) => <tr key={item._id}><td className="erp-date-cell">{formatDate(item.movementDate)}</td><td><span className={`erp-movement-type erp-movement-type--${item.type}`}>{labels[item.type]}</span></td><td><strong>{item.productName}</strong><small className="erp-table-subline">{item.sku}</small></td><td>{item.quantity}{item.type === 'stocktake' && ' thực tế'}</td><td>{item.stockBefore} → {item.stockAfter}</td><td>{item.customerName || '—'}</td><td>{item.imageUrl ? <a href={item.imageUrl} target="_blank" rel="noreferrer" className="erp-image-link">Xem ảnh ↗</a> : '—'}</td><td>{[item.reference, item.note].filter(Boolean).join(' · ') || '—'}</td><td><button className="erp-text-button" type="button" onClick={() => setMovementEditor(item)}>Sửa</button></td></tr>)}</tbody></table>{!busy && movements.length === 0 && <p className="erp-empty">Không có chứng từ trong kỳ này.</p>}{busy && <p className="erp-empty">Đang đồng bộ dữ liệu...</p>}</div>}
+          <div className="erp-table-scroll"><table><thead><tr><th>SKU</th><th>Tên sản phẩm</th><th>Nhóm</th><th>Đơn vị</th><th>Giá bán lẻ</th><th>Giá cửa hàng</th><th>Kg / đơn vị</th><th>Tồn kho (Thanh Phú · Đức Hòa · Bến Lức / tổng)</th><th>Mức tối thiểu</th><th>Trạng thái</th><th /></tr></thead><tbody>{products.map((product) => <tr key={product._id}><td className="erp-mono">{product.sku}</td><td><strong>{product.name}</strong></td><td>{product.category || '—'}</td><td>{product.unit}</td><td>{Number(product.salePrice || 0).toLocaleString('vi-VN')}</td><td>{Number(product.storePrice || 0).toLocaleString('vi-VN')}</td><td>{Number(product.weightPerUnit || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 })}</td><td className={product.currentStock <= product.reorderLevel ? 'erp-stock-low' : ''}>{`${warehouseStock(product, 'thanh-phu')} · ${warehouseStock(product, 'duc-hoa')} · ${warehouseStock(product, 'ben-luc')} / ${product.currentStock}`}</td><td>{product.reorderLevel}</td><td><span className={product.isActive ? 'erp-status erp-status--active' : 'erp-status'}>{product.isActive ? 'Đang bán' : 'Ngừng bán'}</span></td><td><button className="erp-text-button" type="button" onClick={() => setProductEditor(product)}>Chỉnh sửa</button></td></tr>)}</tbody></table></div>
+        </> : <div className="erp-table-scroll"><table><thead><tr><th>Ngày giờ</th><th>Loại</th><th>Kho</th><th>SKU / Sản phẩm</th><th>Số lượng</th><th>Tồn trước → sau</th><th>Khách hàng</th><th>Ảnh hàng xuất</th><th>Tham chiếu / ghi chú</th><th /></tr></thead><tbody>{movements.map((item) => <tr key={item._id}><td className="erp-date-cell">{formatDate(item.movementDate)}</td><td><span className={`erp-movement-type erp-movement-type--${item.type}`}>{labels[item.type]}</span></td><td>{warehouses.find(([value]) => value === (item.warehouse || 'thanh-phu'))?.[1] || 'Kho Thanh Phú'}</td><td><strong>{item.productName}</strong><small className="erp-table-subline">{item.sku}</small></td><td>{item.quantity}{item.type === 'stocktake' && ' thực tế'}</td><td>{item.stockBefore} → {item.stockAfter}</td><td>{item.customerName || '—'}</td><td>{item.imageUrl ? <a href={item.imageUrl} target="_blank" rel="noreferrer" className="erp-image-link">Xem ảnh ↗</a> : '—'}</td><td>{[item.reference, item.note].filter(Boolean).join(' · ') || '—'}</td><td><button className="erp-text-button" type="button" onClick={() => setMovementEditor(item)}>Sửa</button></td></tr>)}</tbody></table>{!busy && movements.length === 0 && <p className="erp-empty">Không có chứng từ trong kỳ này.</p>}{busy && <p className="erp-empty">Đang đồng bộ dữ liệu...</p>}</div>}
       </section>
       <p className="erp-footnote">Mọi thay đổi tồn được ghi nhận qua chứng từ. Điều chỉnh ngày hoặc số lượng sẽ tính lại tồn theo lịch sử.</p>
     </div>

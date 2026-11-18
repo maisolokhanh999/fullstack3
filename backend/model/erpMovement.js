@@ -4,6 +4,7 @@ const erpMovementSchema = new mongoose.Schema(
   {
     documentId: { type: mongoose.Schema.Types.ObjectId, ref: "ErpDocument" },
     productId: { type: mongoose.Schema.Types.ObjectId, ref: "ErpProduct", required: true },
+    warehouse: { type: String, enum: ["thanh-phu", "duc-hoa", "ben-luc"], default: "thanh-phu", index: true },
     productName: { type: String, required: true, trim: true },
     sku: { type: String, required: true, trim: true },
     type: { type: String, enum: ["receipt", "issue", "stocktake"], required: true },

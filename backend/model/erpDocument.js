@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 const documentLineSchema = new mongoose.Schema({
   productId: { type: mongoose.Schema.Types.ObjectId, ref: "ErpProduct", required: true },
+  warehouse: { type: String, enum: ["thanh-phu", "duc-hoa", "ben-luc"], default: "thanh-phu" },
   movementId: { type: mongoose.Schema.Types.ObjectId, ref: "ErpMovement" },
   sku: { type: String, required: true, trim: true },
   productName: { type: String, required: true, trim: true },
@@ -31,6 +32,7 @@ const erpDocumentSchema = new mongoose.Schema({
   paidAmount: { type: Number, min: 0, default: 0 },
   isDebt: { type: Boolean, default: false },
   priceType: { type: String, enum: ["retail", "store"], default: "retail" },
+  documentMode: { type: String, enum: ["standard", "noPrice", "quantityDebt"], default: "standard" },
   paymentInWords: { type: String, trim: true, default: "", maxlength: 300 },
   totalAmount: { type: Number, min: 0, default: 0 },
   totalWeight: { type: Number, min: 0, default: 0 },

@@ -2,6 +2,7 @@ import express from "express";
 import {
   createCustomerPayment,
   createErpDocument,
+  createErpCustomer,
   getCustomerDebts,
   getCustomerPayments,
   getErpDocument,
@@ -37,6 +38,7 @@ router.get("/documents", getErpDocuments);
 router.post("/documents", createErpDocument);
 router.get("/documents/:id", getErpDocument);
 router.get("/debts", getCustomerDebts);
+router.post("/customers", createErpCustomer);
 router.get("/debts/:customerKey/payments", getCustomerPayments);
 router.post("/payments", createCustomerPayment);
 router.post("/uploads/payment-proof", parsePaymentProof, uploadErpImage);

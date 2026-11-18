@@ -1,6 +1,6 @@
 # ERP Inventory API
 
-ERP is mounted in the main backend. Start it with `npm run dev` from the backend folder; the ERP endpoints use the same origin and port as the backend (default `http://localhost:5000`). ERP endpoints do not require a token. Inventory stock can only be changed through movement documents; product create/update requests cannot set stock directly.
+ERP is mounted in the main backend. Start it with `npm run dev` from the backend folder; the ERP endpoints use the same origin and port as the backend (default `http://localhost:5000`). ERP endpoints do not require a token. Inventory stock can only be changed through movement documents; product create/update requests cannot set stock directly. The supported warehouses are `thanh-phu`, `duc-hoa`, and `ben-luc`.
 
 ## Products
 
@@ -14,7 +14,7 @@ ERP is mounted in the main backend. Start it with `npm run dev` from the backend
 
 ## Printable Documents
 
-- `POST /erp/documents` creates a multi-line `salesInvoice` or `stockIssue`. The complete document and its issue movements are saved in one MongoDB transaction; if any product would go below zero, the entire operation rolls back.
+- `POST /erp/documents` creates a multi-line `salesInvoice` or `stockIssue`. Invoices do not change stock. A `stockIssue` line can include its `warehouse`; only issued quantities reduce that warehouse's balance, and the complete document and movements are saved atomically.
 - `GET /erp/documents?year=&month=&type=&keyword=` lists saved documents.
 - `GET /erp/documents/:id` reads a saved document by Mongo ID or document number for reprinting.
 - Document lines preserve product/SKU/unit snapshots, fractional quantities (up to three decimals), unit price, line amount, package note, and weight. Invoice headers also preserve customer, delivery, old debt, paid amount, and payment-in-words fields.
@@ -26,7 +26,7 @@ ERP is mounted in the main backend. Start it with `npm run dev` from the backend
 
 ## Stock Movements
 
-- `POST /erp/movements` creates a `receipt`, `issue`, or `stocktake` document. Supply `productId`, `type`, integer `quantity`, and `movementDate`. For an `issue`, also supply `customerName` and `imageUrl`. A stocktake quantity is the physical count found.
+- `POST /erp/movements` creates a `receipt`, `issue`, or `stocktake` document. Supply `productId`, `type`, integer `quantity`, and `movementDate`; `warehouse` defaults to `thanh-phu`. For an `issue`, also supply `customerName` and `imageUrl`. A stocktake quantity is the physical count found for that warehouse.
 - `GET /erp/movements?year=&month=&productName=&type=` lists ledger entries.
 - `GET /erp/exports?year=&month=&productName=` queries shipped products only (`type=issue`).
 - `PUT /erp/movements/:id` corrects a movement. Accepted fields include `productId`, `type`, `quantity`, `customerName`, `imageUrl`, `reference`, `note`, and `movementDate`. The ledger is replayed chronologically in a transaction; a correction that creates negative stock is rejected.

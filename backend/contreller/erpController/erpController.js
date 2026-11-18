@@ -9,6 +9,7 @@ import {
   parseMovementDate,
   rebuildProductStock,
   validateMovement,
+  validateWarehouse,
   withErpTransaction,
 } from "../../services/erpInventoryService.js";
 
@@ -100,15 +101,17 @@ export const deleteProduct = async (req, res) => {
 
 export const createMovement = async (req, res) => {
   try {
-    const { productId, type, quantity, customerName = "", imageUrl = "", reference = "", note = "" } = req.body;
+    const { productId, type, quantity, customerName = "", imageUrl = "", reference = "", note = "", warehouse = "thanh-phu" } = req.body;
     if (!mongoose.isValidObjectId(productId)) throw new ErpError(400, "Mã sản phẩm không hợp lệ");
     validateMovement({ type, quantity, customerName, imageUrl });
+    validateWarehouse(warehouse);
     const movementDate = parseMovementDate(req.body.movementDate);
     const movement = await withErpTransaction(async (session) => {
       const product = await ErpProduct.findOne({ _id: productId, isDeleted: false, isActive: true }).session(session);
       if (!product) throw new ErpError(404, "Không tìm thấy sản phẩm đang hoạt động");
       const [created] = await ErpMovement.create([{
         productId: product._id,
+        warehouse,
         productName: product.name,
         sku: product.sku,
         type,
@@ -131,11 +134,12 @@ export const createMovement = async (req, res) => {
 
 export const createReceiptBatch = async (req, res) => {
   try {
-    const { lines, movementDate, reference = "", note = "" } = req.body;
+    const { lines, movementDate, reference = "", note = "", warehouse = "thanh-phu" } = req.body;
     if (!Array.isArray(lines) || lines.length < 1 || lines.length > 200) {
       throw new ErpError(400, "Phiếu nhập cần từ 1 đến 200 mặt hàng");
     }
     const date = parseMovementDate(movementDate);
+    validateWarehouse(warehouse);
     for (const line of lines) {
       if (!mongoose.isValidObjectId(line.productId)) throw new ErpError(400, "Có sản phẩm không hợp lệ trong danh sách");
       validateMovement({ type: "receipt", quantity: line.quantity });
@@ -154,6 +158,7 @@ export const createReceiptBatch = async (req, res) => {
         const product = productById.get(String(line.productId));
         const [movement] = await ErpMovement.create([{
           productId: product._id,
+          warehouse: line.warehouse || warehouse,
           productName: product.name,
           sku: product.sku,
           type: "receipt",
@@ -191,6 +196,7 @@ export const updateMovement = async (req, res) => {
 
       const next = {
         productId: product._id,
+        warehouse: req.body.warehouse ?? existing.warehouse ?? "thanh-phu",
         type: req.body.type ?? existing.type,
         quantity: req.body.quantity ?? existing.quantity,
         customerName: req.body.customerName ?? existing.customerName,
@@ -199,7 +205,9 @@ export const updateMovement = async (req, res) => {
         note: req.body.note ?? existing.note,
       };
       validateMovement(next);
+      validateWarehouse(next.warehouse);
       existing.productId = product._id;
+      existing.warehouse = next.warehouse;
       existing.productName = product.name;
       existing.sku = product.sku;
       existing.type = next.type;

@@ -75,6 +75,11 @@ export async function createErpDocument(payload) {
   return (await response.json()).data
 }
 
+export async function createErpCustomer(payload) {
+  const response = await erpRequest('/erp/customers', { method: 'POST', body: payload })
+  return (await response.json()).data
+}
+
 export async function downloadErpWorkbook({ year, month }) {
   const response = await erpRequest(`/erp/export.xlsx?${new URLSearchParams({ year, month })}`)
   const blobUrl = URL.createObjectURL(await response.blob())
