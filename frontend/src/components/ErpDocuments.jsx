@@ -455,7 +455,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
         <p className="erp-paper__words"><b>Chưa thanh toán bằng chữ:</b><span>{form.isDebt ? '' : form.paymentInWords || '........................................................................................................'}</span></p></>}
         {!form.isDebt && <p className="erp-paper__payment-method">Hình thức thanh toán: {form.paymentMethod === 'bankTransfer' ? 'Chuyển khoản' : form.paymentMethod === 'mixed' ? 'Chuyển khoản và tiền mặt' : 'Tiền mặt'}</p>}
         <p className="erp-paper__note"><b>Ghi chú:</b><span>{form.note || 'Cảm ơn quý khách đã ủng hộ cửa hàng.'}</span></p>
-        <p className="erp-paper__return-policy">Chỉ đổi trả hàng trong vòng 1 tuần kể từ ngày mua (không đổi hoặc trả tấn/bao đã khui).</p>
+        <p className="erp-paper__return-policy">Chỉ đổi trả hàng trong vòng 1 tuần kể từ ngày mua (không đổi hoặc trả tấm in HV).</p>
         <footer className="erp-paper__signatures"><span>KHÁCH HÀNG</span><span>LẬP PHIẾU</span></footer>
       </> : <>
         <header className="erp-paper__issue-heading"><div><small>{form.issuerName || 'ĐƠN VỊ: CỬA HÀNG'}</small><h1>PHIẾU XUẤT KHO</h1></div><div><span>Số: <b>{form.documentNumber}</b></span><time>{printedDate(form.documentDate)}</time></div></header>
