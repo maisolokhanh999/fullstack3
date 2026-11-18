@@ -21,6 +21,24 @@ const localInputDate = (value) => {
 }
 const formatDate = (value) => new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
 const quantityText = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 })
+const PAGE_SIZE = 10
+
+function PaginationControls({ page, totalItems, onPageChange }) {
+  const pageCount = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  if (totalItems <= PAGE_SIZE) return null
+  const firstItem = (currentPage - 1) * PAGE_SIZE + 1
+  const lastItem = Math.min(currentPage * PAGE_SIZE, totalItems)
+
+  return <nav className="erp-pagination" aria-label="Phân trang">
+    <span aria-live="polite">Hiển thị {firstItem}–{lastItem} / {totalItems}</span>
+    <div>
+      <button type="button" className="erp-button erp-button--outline" disabled={currentPage === 1} onClick={() => onPageChange(currentPage - 1)}>Trước</button>
+      <span>Trang {currentPage} / {pageCount}</span>
+      <button type="button" className="erp-button erp-button--outline" disabled={currentPage === pageCount} onClick={() => onPageChange(currentPage + 1)}>Sau</button>
+    </div>
+  </nav>
+}
 
 function ProductEditor({ product, onClose, onSaved }) {
   const [form, setForm] = useState({
@@ -192,6 +210,7 @@ export default function ErpPage() {
   const [movements, setMovements] = useState([])
   const [tab, setTab] = useState('ledger')
   const [isTabPending, startTabTransition] = useTransition()
+  const [page, setPage] = useState(1)
   const [documentsMode, setDocumentsMode] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [activeKeyword, setActiveKeyword] = useState('')
@@ -245,11 +264,15 @@ export default function ErpPage() {
     return () => { alive = false }
   }, [year, month, activeKeyword, activeDateFrom, activeDateTo, activeWarehouseFilter, tab, reloadId])
 
-  const search = (event) => { event.preventDefault(); setActiveKeyword(keyword.trim()); setActiveDateFrom(dateFrom); setActiveDateTo(dateTo); setActiveWarehouseFilter(warehouseFilter) }
+  const search = (event) => { event.preventDefault(); setPage(1); setActiveKeyword(keyword.trim()); setActiveDateFrom(dateFrom); setActiveDateTo(dateTo); setActiveWarehouseFilter(warehouseFilter) }
   const visibleProducts = products.filter((product) => `${product.name} ${product.sku}`.toLocaleLowerCase('vi-VN').includes(stockKeyword.trim().toLocaleLowerCase('vi-VN')))
+  const pageItems = (items) => items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const currentProducts = pageItems(products)
+  const currentVisibleProducts = pageItems(visibleProducts)
+  const currentMovements = pageItems(movements)
   const warehouseTotals = warehouses.map(([warehouse]) => products.reduce((sum, product) => sum + warehouseStock(product, warehouse), 0))
-  const handleMovementSaved = async () => { await refresh(); setNotice('Đã lưu chứng từ và cập nhật tồn kho.') }
-  const handleProductSaved = () => { setReloadId((value) => value + 1); setNotice('Đã lưu thông tin sản phẩm.') }
+  const handleMovementSaved = async () => { setPage(1); await refresh(); setNotice('Đã lưu chứng từ và cập nhật tồn kho.') }
+  const handleProductSaved = () => { setPage(1); setReloadId((value) => value + 1); setNotice('Đã lưu thông tin sản phẩm.') }
   const exportExcel = async () => {
     setBusy(true)
     setError('')
@@ -264,13 +287,14 @@ export default function ErpPage() {
   if (documentsMode) {
     return <ErpDocuments
       products={products}
-      onBack={() => setDocumentsMode(false)}
+      isTransitioning={isTabPending}
+      onBack={() => startTabTransition(() => setDocumentsMode(false))}
       onSaved={async () => { await refresh(); setReloadId((value) => value + 1) }}
     />
   }
 
-  return <main className="erp-page">
-    <header className="erp-topbar"><a className="erp-brand" href="/erp"><span>ERP</span><i>INVENTORY</i></a><div className="erp-topbar__right"><span className="erp-connection"><i />{error ? 'Lỗi kết nối' : busy ? 'Đang đồng bộ' : 'Đã kết nối'}</span><button className="erp-button erp-button--quiet" type="button" onClick={() => setDocumentsMode(true)}>Mẫu chứng từ</button></div></header>
+  return <main className={`erp-page${isTabPending ? ' is-view-pending' : ''}`} aria-busy={isTabPending}>
+    <header className="erp-topbar"><a className="erp-brand" href="/erp"><span>ERP</span><i>INVENTORY</i></a><div className="erp-topbar__right"><span className="erp-connection"><i />{error ? 'Lỗi kết nối' : busy ? 'Đang đồng bộ' : 'Đã kết nối'}</span><button className="erp-button erp-button--quiet" type="button" onClick={() => startTabTransition(() => setDocumentsMode(true))}>Mẫu chứng từ</button></div></header>
     <div className="erp-content">
       <section className="erp-titlebar"><div><p className="erp-eyebrow">ĐIỀU HÀNH · KHO HÀNG</p><h1>Quản lý tồn kho</h1><p className="erp-subtitle">Theo dõi luân chuyển hàng hóa, đối chiếu tồn và tra cứu giao hàng.</p></div><button type="button" className="erp-button erp-button--dark" onClick={() => setReceiptEditorOpen(true)}>＋ Lập phiếu nhập</button></section>
       {(error || notice) && <div className={error ? 'erp-alert erp-alert--error' : 'erp-alert erp-alert--success'} role={error ? 'alert' : 'status'}>{error || notice}<button type="button" aria-label="Đóng thông báo" onClick={() => { setError(''); setNotice('') }}>×</button></div>}
@@ -284,21 +308,21 @@ export default function ErpPage() {
       <section className={`erp-ledger${isTabPending ? ' is-tab-pending' : ''}`}>
         <div className="erp-ledger-toolbar">
           <div className="erp-tabs" role="tablist" aria-label="Dữ liệu kho">
-            {[['ledger', 'Sổ giao dịch'], ['shipments', 'Hàng đã xuất'], ['warehouseStock', 'Tồn theo kho'], ['products', 'Sản phẩm']].map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => startTabTransition(() => setTab(value))}>{label}</button>)}
+            {[['ledger', 'Sổ giao dịch'], ['shipments', 'Hàng đã xuất'], ['warehouseStock', 'Tồn theo kho'], ['products', 'Sản phẩm']].map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => startTabTransition(() => { setPage(1); setTab(value) })}>{label}</button>)}
           </div>
-          <div className="erp-period-tools"><label>Tháng<select value={month} onChange={(event) => setMonth(event.target.value)}>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{String(index + 1).padStart(2, '0')}</option>)}</select></label><label>Năm<input type="number" min="2000" max="2100" value={year} onChange={(event) => setYear(event.target.value)} /></label><button className="erp-button erp-button--outline" type="button" onClick={exportExcel} disabled={busy}>↓ Excel</button></div>
+          <div className="erp-period-tools"><label>Tháng<select value={month} onChange={(event) => { setPage(1); setMonth(event.target.value) }}>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{String(index + 1).padStart(2, '0')}</option>)}</select></label><label>Năm<input type="number" min="2000" max="2100" value={year} onChange={(event) => { setPage(1); setYear(event.target.value) }} /></label><button className="erp-button erp-button--outline" type="button" onClick={exportExcel} disabled={busy}>↓ Excel</button></div>
         </div>
 
         {(tab === 'ledger' || tab === 'shipments') && <div className="erp-filterbar"><form onSubmit={search}><label htmlFor="erp-product-query">Tìm theo tên hoặc mã sản phẩm</label><div><input id="erp-product-query" placeholder="Tên sản phẩm hoặc SKU" value={keyword} onChange={(event) => setKeyword(event.target.value)} />{tab === 'shipments' && <><input aria-label="Từ ngày" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /><input aria-label="Đến ngày" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /><select aria-label="Lọc theo kho" value={warehouseFilter} onChange={(event) => setWarehouseFilter(event.target.value)}><option value="">Tất cả kho</option>{warehouses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></>}<button className="erp-button erp-button--outline" type="submit">Tìm kiếm</button></div></form><span>{movements.length} {tab === 'shipments' ? 'lượt xuất' : 'chứng từ'}{tab === 'shipments' && activeDateFrom ? ` · từ ${activeDateFrom}` : ''}{tab === 'shipments' && activeDateTo ? ` · đến ${activeDateTo}` : ''}{tab === 'ledger' ? ` · ${String(month).padStart(2, '0')}/${year}` : ''}</span></div>}
 
         {tab === 'warehouseStock' ? <>
-          <div className="erp-table-heading"><div><h2>Tồn kho theo từng kho</h2><p>Số lượng hiện có được tính riêng cho từng kho.</p></div><label className="erp-stock-search">Tìm sản phẩm<input type="search" placeholder="Tên hoặc SKU" value={stockKeyword} onChange={(event) => setStockKeyword(event.target.value)} /></label></div>
+          <div className="erp-table-heading"><div><h2>Tồn kho theo từng kho</h2><p>Số lượng hiện có được tính riêng cho từng kho.</p></div><label className="erp-stock-search">Tìm sản phẩm<input type="search" placeholder="Tên hoặc SKU" value={stockKeyword} onChange={(event) => { setPage(1); setStockKeyword(event.target.value) }} /></label></div>
           <div className="erp-warehouse-stock-cards">{warehouses.map(([warehouse, label], index) => <article key={warehouse}><span>{label}</span><strong>{quantityText(warehouseTotals[index])}</strong><small>Tổng số lượng tồn</small></article>)}</div>
-          <div className="erp-table-scroll"><table><thead><tr><th>SKU</th><th>Sản phẩm</th><th>Đơn vị</th>{warehouses.map(([warehouse, label]) => <th key={warehouse}>{label}</th>)}<th>Tổng tồn</th></tr></thead><tbody>{visibleProducts.map((product) => <tr key={product._id}><td className="erp-mono">{product.sku}</td><td><strong>{product.name}</strong></td><td>{product.unit}</td>{warehouses.map(([warehouse]) => <td key={warehouse}>{quantityText(warehouseStock(product, warehouse))}</td>)}<td><strong>{quantityText(product.currentStock)}</strong></td></tr>)}</tbody></table>{visibleProducts.length === 0 && <p className="erp-empty">Không tìm thấy sản phẩm.</p>}</div>
+          <div className="erp-table-scroll"><table><thead><tr><th>SKU</th><th>Sản phẩm</th><th>Đơn vị</th>{warehouses.map(([warehouse, label]) => <th key={warehouse}>{label}</th>)}<th>Tổng tồn</th></tr></thead><tbody>{currentVisibleProducts.map((product) => <tr key={product._id}><td className="erp-mono">{product.sku}</td><td><strong>{product.name}</strong></td><td>{product.unit}</td>{warehouses.map(([warehouse]) => <td key={warehouse}>{quantityText(warehouseStock(product, warehouse))}</td>)}<td><strong>{quantityText(product.currentStock)}</strong></td></tr>)}</tbody></table>{visibleProducts.length === 0 && <p className="erp-empty">Không tìm thấy sản phẩm.</p>}</div><PaginationControls page={page} totalItems={visibleProducts.length} onPageChange={setPage} />
         </> : tab === 'products' ? <>
           <div className="erp-table-heading"><div><h2>Danh mục sản phẩm</h2><p>Thông tin hàng hóa và số tồn hiện tại</p></div><button className="erp-button erp-button--outline" type="button" onClick={() => setProductEditor({})}>＋ Thêm sản phẩm</button></div>
-          <div className="erp-table-scroll"><table><thead><tr><th>SKU</th><th>Tên sản phẩm</th><th>Nhóm</th><th>Đơn vị</th><th>Giá bán lẻ</th><th>Giá cửa hàng</th><th>Kg / đơn vị</th><th>Tồn kho (Thanh Phú · Đức Hòa · Bến Lức / tổng)</th><th>Mức tối thiểu</th><th>Trạng thái</th><th /></tr></thead><tbody>{products.map((product) => <tr key={product._id}><td className="erp-mono">{product.sku}</td><td><strong>{product.name}</strong></td><td>{product.category || '—'}</td><td>{product.unit}</td><td>{Number(product.salePrice || 0).toLocaleString('vi-VN')}</td><td>{Number(product.storePrice || 0).toLocaleString('vi-VN')}</td><td>{Number(product.weightPerUnit || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 })}</td><td className={product.currentStock <= product.reorderLevel ? 'erp-stock-low' : ''}>{`${warehouseStock(product, 'thanh-phu')} · ${warehouseStock(product, 'duc-hoa')} · ${warehouseStock(product, 'ben-luc')} / ${product.currentStock}`}</td><td>{product.reorderLevel}</td><td><span className={product.isActive ? 'erp-status erp-status--active' : 'erp-status'}>{product.isActive ? 'Đang bán' : 'Ngừng bán'}</span></td><td><button className="erp-text-button" type="button" onClick={() => setProductEditor(product)}>Chỉnh sửa</button></td></tr>)}</tbody></table></div>
-        </> : <div className="erp-table-scroll"><table><thead><tr><th>Ngày giờ</th><th>Loại</th><th>Kho</th><th>SKU / Sản phẩm</th><th>Số lượng</th><th>Tồn trước → sau</th><th>Khách hàng</th><th>Ảnh hàng xuất</th><th>Tham chiếu / ghi chú</th><th /></tr></thead><tbody>{movements.map((item) => <tr key={item._id}><td className="erp-date-cell">{formatDate(item.movementDate)}</td><td><span className={`erp-movement-type erp-movement-type--${item.type}`}>{labels[item.type]}</span></td><td>{warehouses.find(([value]) => value === (item.warehouse || 'thanh-phu'))?.[1] || 'Kho Thanh Phú'}</td><td><strong>{item.productName}</strong><small className="erp-table-subline">{item.sku}</small></td><td>{item.quantity}{item.type === 'stocktake' && ' thực tế'}</td><td>{item.stockBefore} → {item.stockAfter}</td><td>{item.customerName || '—'}</td><td>{item.imageUrl ? <a href={item.imageUrl} target="_blank" rel="noreferrer" className="erp-image-link">Xem ảnh ↗</a> : '—'}</td><td>{[item.reference, item.note].filter(Boolean).join(' · ') || '—'}</td><td><button className="erp-text-button" type="button" onClick={() => setMovementEditor(item)}>Sửa</button></td></tr>)}</tbody></table>{!busy && movements.length === 0 && <p className="erp-empty">Không có chứng từ trong kỳ này.</p>}{busy && <p className="erp-empty">Đang đồng bộ dữ liệu...</p>}</div>}
+          <div className="erp-table-scroll"><table><thead><tr><th>SKU</th><th>Tên sản phẩm</th><th>Nhóm</th><th>Đơn vị</th><th>Giá bán lẻ</th><th>Giá cửa hàng</th><th>Kg / đơn vị</th><th>Tồn kho (Thanh Phú · Đức Hòa · Bến Lức / tổng)</th><th>Mức tối thiểu</th><th>Trạng thái</th><th /></tr></thead><tbody>{currentProducts.map((product) => <tr key={product._id}><td className="erp-mono">{product.sku}</td><td><strong>{product.name}</strong></td><td>{product.category || '—'}</td><td>{product.unit}</td><td>{Number(product.salePrice || 0).toLocaleString('vi-VN')}</td><td>{Number(product.storePrice || 0).toLocaleString('vi-VN')}</td><td>{Number(product.weightPerUnit || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 })}</td><td className={product.currentStock <= product.reorderLevel ? 'erp-stock-low' : ''}>{`${warehouseStock(product, 'thanh-phu')} · ${warehouseStock(product, 'duc-hoa')} · ${warehouseStock(product, 'ben-luc')} / ${product.currentStock}`}</td><td>{product.reorderLevel}</td><td><span className={product.isActive ? 'erp-status erp-status--active' : 'erp-status'}>{product.isActive ? 'Đang bán' : 'Ngừng bán'}</span></td><td><button className="erp-text-button" type="button" onClick={() => setProductEditor(product)}>Chỉnh sửa</button></td></tr>)}</tbody></table></div><PaginationControls page={page} totalItems={products.length} onPageChange={setPage} />
+        </> : <><div className="erp-table-scroll"><table><thead><tr><th>Ngày giờ</th><th>Loại</th><th>Kho</th><th>SKU / Sản phẩm</th><th>Số lượng</th><th>Tồn trước → sau</th><th>Khách hàng</th><th>Ảnh hàng xuất</th><th>Tham chiếu / ghi chú</th><th /></tr></thead><tbody>{currentMovements.map((item) => <tr key={item._id}><td className="erp-date-cell">{formatDate(item.movementDate)}</td><td><span className={`erp-movement-type erp-movement-type--${item.type}`}>{labels[item.type]}</span></td><td>{warehouses.find(([value]) => value === (item.warehouse || 'thanh-phu'))?.[1] || 'Kho Thanh Phú'}</td><td><strong>{item.productName}</strong><small className="erp-table-subline">{item.sku}</small></td><td>{item.quantity}{item.type === 'stocktake' && ' thực tế'}</td><td>{item.stockBefore} → {item.stockAfter}</td><td>{item.customerName || '—'}</td><td>{item.imageUrl ? <a href={item.imageUrl} target="_blank" rel="noreferrer" className="erp-image-link">Xem ảnh ↗</a> : '—'}</td><td>{[item.reference, item.note].filter(Boolean).join(' · ') || '—'}</td><td><button className="erp-text-button" type="button" onClick={() => setMovementEditor(item)}>Sửa</button></td></tr>)}</tbody></table>{!busy && movements.length === 0 && <p className="erp-empty">Không có chứng từ trong kỳ này.</p>}{busy && <p className="erp-empty">Đang đồng bộ dữ liệu...</p>}</div><PaginationControls page={page} totalItems={movements.length} onPageChange={setPage} /></>}
       </section>
       <p className="erp-footnote">Mọi thay đổi tồn được ghi nhận qua chứng từ. Điều chỉnh ngày hoặc số lượng sẽ tính lại tồn theo lịch sử.</p>
     </div>

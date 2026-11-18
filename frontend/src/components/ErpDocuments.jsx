@@ -156,7 +156,7 @@ function CustomerDebtPanel({ onBack }) {
   </section>
 }
 
-export default function ErpDocuments({ products, onBack, onSaved }) {
+export default function ErpDocuments({ products, onBack, onSaved, isTransitioning = false }) {
   const [type, setType] = useState('salesInvoice')
   const [section, setSection] = useState('documents')
   const [form, setForm] = useState(() => newForm())
@@ -310,8 +310,8 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
     const normalized = value.trim().toLocaleLowerCase('vi-VN')
     const selectedInvoice = availableInvoices.find((invoice) => `${invoice.documentNumber} · ${invoice.customerName}`.toLocaleLowerCase('vi-VN') === normalized || invoice.documentNumber.toLocaleLowerCase('vi-VN') === normalized)
     if (!selectedInvoice) return
-    if (selectedInvoice.fulfillmentStatus !== 'partial') {
-      setError('Hóa đơn tạm hãy chốt trực tiếp từ màn hình hóa đơn; hóa đơn đã chốt không thể xuất thêm.')
+    if (!['pending', 'partial'].includes(selectedInvoice.fulfillmentStatus)) {
+      setError('Hóa đơn đã chốt, không thể chuyển sang phiếu xuất kho.')
       return
     }
     setBusy(true)
@@ -364,7 +364,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
         lines,
       }))
       setInvoiceSearch(`${invoice.documentNumber} · ${invoice.customerName}`)
-      setNotice(`Đã lấy hóa đơn ${invoice.documentNumber}. Các mặt hàng đã xuất được trừ khỏi số lượng còn lại.`)
+      setNotice(`Đã chuyển hóa đơn ${invoice.documentNumber} sang phiếu xuất kho. Khoản thanh toán đã nhập được giữ lại và chỉ ghi nhận khi chốt phiếu xuất.`)
     } catch (selectionError) { setError(selectionError.message) }
     finally { setBusy(false) }
   }
@@ -500,15 +500,15 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  if (section === 'debts') return <main className="erp-page erp-document-mode">
+  if (section === 'debts') return <main className={`erp-page erp-document-mode${isTransitioning ? ' is-view-pending' : ''}`} aria-busy={isTransitioning}>
     <header className="erp-topbar erp-document-controls"><button className="erp-button erp-button--quiet" type="button" onClick={onBack}>← Kho hàng</button><a className="erp-brand" href="/"><span>ERP</span><i>CÔNG NỢ</i></a><div className="erp-topbar__right"><button className="erp-button erp-button--quiet" type="button" onClick={() => setSection('documents')}>Mẫu chứng từ</button></div></header>
     <div className="erp-content erp-document-controls"><CustomerDebtPanel onBack={() => setSection('documents')} /></div>
   </main>
 
-  return <main className="erp-page erp-document-mode">
+  return <main className={`erp-page erp-document-mode${isTransitioning ? ' is-view-pending' : ''}`} aria-busy={isTransitioning}>
     <header className="erp-topbar erp-document-controls"><button className="erp-button erp-button--quiet" type="button" onClick={onBack}>← Kho hàng</button><a className="erp-brand" href="/"><span>ERP</span><i>CHỨNG TỪ</i></a><div className="erp-topbar__right"><button className="erp-button erp-button--quiet" type="button" onClick={() => setSection('debts')}>Kiểm tra dư nợ</button><button className="erp-button erp-button--quiet" type="button" onClick={reset}>＋ Tạo mới</button></div></header>
     <div className="erp-content erp-document-controls">
-      <section className="erp-titlebar"><div><p className="erp-eyebrow">MẪU IN A4 · GHI SỔ KHO</p><h1>Chứng từ bán hàng</h1><p className="erp-subtitle">Lưu hóa đơn tạm để chỉnh số lượng; chốt hóa đơn sẽ tính lại tiền và trừ tồn kho theo kho từng dòng.</p></div><div className="erp-document-actions">{readOnly && type === 'salesInvoice' && form.fulfillmentStatus === 'partial' && <button className="erp-button erp-button--outline" type="button" onClick={forwardInvoice}>Tiếp tục xuất phần còn lại</button>}{type === 'salesInvoice' && form._id && form.fulfillmentStatus === 'pending' && readOnly && <button className="erp-button erp-button--outline" type="button" onClick={() => { setReadOnly(false); setNotice('Chỉnh số lượng hoặc mặt hàng rồi chốt để cập nhật hóa đơn và tồn kho.') }}>Sửa số lượng / mặt hàng</button>}{type === 'salesInvoice' && form._id && form.fulfillmentStatus === 'pending' && <button className="erp-button erp-button--dark" type="button" disabled={busy} onClick={finalizeInvoice}>{busy ? 'Đang chốt...' : 'Chốt hóa đơn & trừ tồn kho'}</button>}{type === 'salesInvoice' && form._id && form.fulfillmentStatus === 'pending' && !readOnly && <button className="erp-button erp-button--quiet" type="button" disabled={busy} onClick={() => reopen(form._id)}>Hủy sửa</button>}<button className="erp-button erp-button--outline" type="button" onClick={print}>In / Lưu PDF</button>{!readOnly && !(type === 'salesInvoice' && form._id) && <button className="erp-button erp-button--dark" type="button" disabled={busy} onClick={save}>{busy ? 'Đang ghi...' : type === 'stockIssue' ? 'Chốt phiếu xuất' : 'Lưu tạm hóa đơn'}</button>}</div></section>
+      <section className="erp-titlebar"><div><p className="erp-eyebrow">MẪU IN A4 · GHI SỔ KHO</p><h1>Chứng từ bán hàng</h1><p className="erp-subtitle">Lưu hóa đơn tạm để chỉnh số lượng; chốt hóa đơn sẽ tính lại tiền và trừ tồn kho theo kho từng dòng.</p></div><div className="erp-document-actions">{readOnly && type === 'salesInvoice' && ['pending', 'partial'].includes(form.fulfillmentStatus) && <button className="erp-button erp-button--outline" type="button" onClick={forwardInvoice}>Chuyển qua phiếu xuất kho</button>}{type === 'salesInvoice' && form._id && form.fulfillmentStatus === 'pending' && readOnly && <button className="erp-button erp-button--outline" type="button" onClick={() => { setReadOnly(false); setNotice('Chỉnh số lượng hoặc mặt hàng rồi chốt để cập nhật hóa đơn và tồn kho.') }}>Sửa số lượng / mặt hàng</button>}{type === 'salesInvoice' && form._id && form.fulfillmentStatus === 'pending' && <button className="erp-button erp-button--dark" type="button" disabled={busy} onClick={finalizeInvoice}>{busy ? 'Đang chốt...' : 'Chốt hóa đơn & trừ tồn kho'}</button>}{type === 'salesInvoice' && form._id && form.fulfillmentStatus === 'pending' && !readOnly && <button className="erp-button erp-button--quiet" type="button" disabled={busy} onClick={() => reopen(form._id)}>Hủy sửa</button>}<button className="erp-button erp-button--outline" type="button" onClick={print}>In / Lưu PDF</button>{!readOnly && !(type === 'salesInvoice' && form._id) && <button className="erp-button erp-button--dark" type="button" disabled={busy} onClick={save}>{busy ? 'Đang ghi...' : type === 'stockIssue' ? 'Chốt phiếu xuất' : 'Lưu tạm hóa đơn'}</button>}</div></section>
       {(error || notice) && <div className={error ? 'erp-alert erp-alert--error' : 'erp-alert erp-alert--success'} role={error ? 'alert' : 'status'}>{error || notice}<button type="button" aria-label="Đóng thông báo" onClick={() => { setError(''); setNotice('') }}>×</button></div>}
       <div className="erp-document-layout">
         <section className="erp-document-editor">
@@ -516,7 +516,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
             <button type="button" role="tab" aria-selected={type === 'salesInvoice'} disabled={readOnly} onClick={() => changeType('salesInvoice')}>Hóa đơn bán hàng</button>
             <button type="button" role="tab" aria-selected={type === 'stockIssue'} disabled={readOnly} onClick={() => changeType('stockIssue')}>Phiếu xuất kho</button>
           </div>
-          {type === 'stockIssue' && !readOnly && <div className="erp-invoice-picker"><label htmlFor="erp-source-invoice">Chọn hóa đơn cũ đã xuất một phần (nếu cần)</label><input id="erp-source-invoice" list="erp-source-invoice-options" value={invoiceSearch} disabled={busy} placeholder="Gõ số hóa đơn hoặc tên khách hàng" onChange={(event) => { setInvoiceSearch(event.target.value); selectInvoiceForIssue(event.target.value) }} /><datalist id="erp-source-invoice-options">{availableInvoices.filter((invoice) => invoice.fulfillmentStatus === 'partial').map((invoice) => <option key={invoice._id} value={`${invoice.documentNumber} · ${invoice.customerName}`} />)}</datalist><small>Hóa đơn mới được chốt trực tiếp từ màn hình hóa đơn; danh sách này chỉ dành cho hóa đơn cũ đã xuất một phần.</small></div>}
+          {type === 'stockIssue' && !readOnly && <div className="erp-invoice-picker"><label htmlFor="erp-source-invoice">Chọn hóa đơn cần xuất kho (nếu cần)</label><input id="erp-source-invoice" list="erp-source-invoice-options" value={invoiceSearch} disabled={busy} placeholder="Gõ số hóa đơn hoặc tên khách hàng" onChange={(event) => { setInvoiceSearch(event.target.value); selectInvoiceForIssue(event.target.value) }} /><datalist id="erp-source-invoice-options">{availableInvoices.filter((invoice) => ['pending', 'partial'].includes(invoice.fulfillmentStatus)).map((invoice) => <option key={invoice._id} value={`${invoice.documentNumber} · ${invoice.customerName}`} />)}</datalist><small>Hóa đơn đã chốt không thể xuất thêm.</small></div>}
           <div className="erp-form-grid">
             {type === 'stockIssue' && form.sourceDocumentNumber && <p className="erp-customer-debt-hint erp-form-wide">Phiếu xuất liên kết hóa đơn <b>{form.sourceDocumentNumber}</b>; khách hàng, địa chỉ và mặt hàng đã được lấy từ hóa đơn.</p>}
             {type === 'salesInvoice' && readOnly && form.fulfillmentStatus && <p className="erp-customer-debt-hint erp-form-wide">Trạng thái: <b>{form.fulfillmentStatus === 'complete' ? 'Đã chốt đủ số lượng' : form.fulfillmentStatus === 'partial' ? 'Đã xuất một phần' : 'Yêu cầu tạm, chưa chốt số lượng'}</b></p>}
