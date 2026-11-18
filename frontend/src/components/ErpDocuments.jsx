@@ -37,8 +37,6 @@ function CustomerDebtPanel({ onBack }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [customerAccountOpen, setCustomerAccountOpen] = useState(false)
-  const [customerAccount, setCustomerAccount] = useState({ name: '', phone: '', address: '' })
 
   useEffect(() => {
     let active = true
@@ -128,6 +126,8 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [customerAccountOpen, setCustomerAccountOpen] = useState(false)
+  const [customerAccount, setCustomerAccount] = useState({ name: '', phone: '', address: '' })
 
   const productById = useMemo(() => new Map(products.map((product) => [product._id, product])), [products])
   const total = form.lines.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0), 0)
