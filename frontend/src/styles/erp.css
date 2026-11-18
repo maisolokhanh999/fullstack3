@@ -431,7 +431,8 @@
 
 .erp-paper { width: min(100% - 40px, 900px); min-height: 1120px; margin: 24px auto; padding: 26px 30px; border: 1px solid #c9d1cc; color: #161616; background: #fff; box-shadow: 0 12px 30px rgba(20, 40, 30, .1); font-family: 'Times New Roman', serif; font-size: 12px; }
 .erp-paper h1 { margin: 0; font-family: 'Times New Roman', serif; font-size: 24px; font-weight: 700; text-align: center; }
-.erp-paper__invoice-heading { display: grid; grid-template-columns: 1fr 105px; align-items: center; gap: 10px; margin-bottom: 8px; color: #a83228; }
+.erp-paper__invoice-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto 90px; align-items: start; gap: 8px; margin-bottom: 8px; color: #a83228; }
+.erp-paper__company { padding-top: 3px; font-size: 11px; white-space: nowrap; }
 .erp-paper__invoice-heading h1 { color: #b12f25; }
 .erp-paper__number { display: grid; grid-template-columns: auto 1fr; gap: 2px 7px; align-items: center; color: #222; }
 .erp-paper__number strong { padding: 3px; color: #b12f25; background: #fff394; text-align: center; }
@@ -443,6 +444,9 @@
 .erp-paper__meta b { font-weight: 400; }
 .erp-paper__meta:has(span:nth-of-type(2)) { grid-template-columns: 80px 1fr 90px 1fr; }
 .erp-paper__meta:has(span:nth-of-type(2)) b:last-child { min-height: 20px; padding: 2px 4px; background: #a8df58; }
+.erp-paper__meta--code { grid-template-columns: 80px 1fr 90px 1fr !important; }
+.erp-paper__meta--code b:nth-child(2) { min-height: 20px; }
+.erp-paper__meta--code b:last-child { min-height: 20px; padding: 2px 4px; background: #a8df58; }
 .erp-paper__table { width: 100%; margin-top: 15px; border-collapse: collapse; table-layout: fixed; }
 .erp-paper__table th, .erp-paper__table td { height: 25px; padding: 3px 5px; border: 1px solid #333; overflow-wrap: anywhere; }
 .erp-paper__table th { color: #9c2821; font-size: 10px; text-align: center; }
@@ -457,14 +461,15 @@
 .erp-paper__table--invoice td { border-top-style: dotted; border-bottom-style: dotted; }
 .erp-paper__blank-row td { height: 21px; }
 .erp-paper__totals { margin-top: 12px; border-top: 1px solid #222; }
-.erp-paper__totals p { display: flex; justify-content: flex-end; gap: 10px; margin: 0; padding: 4px 8px; border-bottom: 1px solid #555; }
-.erp-paper__totals strong { min-width: 120px; text-align: right; }
+.erp-paper__totals p { display: grid; grid-template-columns: 1fr minmax(120px, 22%); gap: 10px; margin: 0; padding: 4px 8px; border-bottom: 1px solid #555; text-align: right; }
+.erp-paper__totals strong { text-align: right; }
+.erp-paper__totals p:last-child strong { background: #fff394; font-weight: 700; }
 .erp-paper__words, .erp-paper__note { display: grid; gap: 5px; margin: 12px 0 0; padding: 5px 0; border-bottom: 1px solid #bbb; }
 .erp-paper__words b { color: #355a9a; font-style: italic; }
 .erp-paper__note b { color: #a83228; font-style: italic; }
 .erp-paper__payment-method { margin: 1px 0; color: #b12f25; font-style: italic; }
 .erp-paper__return-policy { margin: 5px 0 0; color: #355a9a; font-style: italic; }
-.erp-paper__signatures { display: flex; justify-content: space-between; margin-top: 12px; padding: 0 5%; text-align: center; }
+.erp-paper__signatures { display: flex; justify-content: space-between; margin-top: 12px; padding: 0 5%; text-align: center; text-decoration: underline; }
 .erp-paper__issue-heading { display: grid; grid-template-columns: 1fr 140px; gap: 15px; margin: -10px -12px 12px; padding: 10px 12px; border: 2px solid #5886a8; color: #762f2a; }
 .erp-paper__issue-heading small { font-weight: 700; }
 .erp-paper__issue-heading h1 { margin-top: 6px; color: #8d2924; font-size: 22px; }
@@ -507,6 +512,10 @@
   .erp-saved-documents { grid-template-columns: 1fr; }
   .erp-saved-documents h2 { grid-column: auto; }
   .erp-paper { width: calc(100% - 20px); min-height: 0; padding: 16px 12px; overflow-x: auto; font-size: 10px; }
+  .erp-paper__invoice-heading { grid-template-columns: 1fr auto; }
+  .erp-paper__company { grid-column: 1; grid-row: 1; font-size: 9px; }
+  .erp-paper__invoice-heading h1 { grid-column: 1; grid-row: 2; text-align: left; font-size: 18px; }
+  .erp-paper__number { grid-column: 2; grid-row: 1 / span 2; }
   .erp-paper__table { min-width: 680px; }
   .erp-paper__issue-meta p { grid-template-columns: 85px 1fr; }
   .erp-paper__issue-meta p b:nth-of-type(2) { grid-column: 1; }
