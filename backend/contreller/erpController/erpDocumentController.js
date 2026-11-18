@@ -59,6 +59,12 @@ export const createErpDocument = async (req, res) => {
         isActive: true,
       }).session(session);
       const productById = new Map(products.map((product) => [String(product._id), product]));
+      let sourceDocument = null;
+      if (body.type === "stockIssue" && body.sourceDocumentId) {
+        if (!mongoose.isValidObjectId(body.sourceDocumentId)) throw new ErpError(400, "Mã hóa đơn liên kết không hợp lệ");
+        sourceDocument = await ErpDocument.findOne({ _id: body.sourceDocumentId, type: "salesInvoice" }).session(session);
+        if (!sourceDocument) throw new ErpError(404, "Không tìm thấy hóa đơn gốc");
+      }
       if (productById.size !== productIds.length) throw new ErpError(404, "Không tìm thấy một hoặc nhiều sản phẩm đang hoạt động");
 
       const lines = body.lines.map((line) => {
@@ -93,6 +99,8 @@ export const createErpDocument = async (req, res) => {
       const [createdDocument] = await ErpDocument.create([{
         documentNumber: body.documentNumber.trim(),
         type: body.type,
+        sourceDocumentId: sourceDocument?._id || null,
+        sourceDocumentNumber: sourceDocument?.documentNumber || "",
         documentDate,
         deliveryDate,
         customerName: body.customerName.trim(),
@@ -164,6 +172,10 @@ export const getErpDocuments = async (req, res) => {
     if (req.query.type) {
       if (!["salesInvoice", "stockIssue"].includes(req.query.type)) throw new ErpError(400, "Mẫu chứng từ không hợp lệ");
       filter.type = req.query.type;
+    }
+    if (req.query.sourceDocumentId) {
+      if (!mongoose.isValidObjectId(req.query.sourceDocumentId)) throw new ErpError(400, "Mã hóa đơn liên kết không hợp lệ");
+      filter.sourceDocumentId = req.query.sourceDocumentId;
     }
     if (req.query.keyword?.trim()) {
       const escaped = req.query.keyword.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

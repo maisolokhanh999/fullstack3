@@ -18,6 +18,7 @@ const printedDate = (value) => value ? new Intl.DateTimeFormat('vi-VN', { day: '
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100
 const newForm = (type = 'salesInvoice') => ({
   documentNumber: newNumber(type), documentDate: today(), deliveryDate: '', customerName: '', customerPhone: '',
+  sourceDocumentId: '', sourceDocumentNumber: '',
   customerAddress: '', deliveryAddress: '', issuerName: '', imageUrl: '', note: '', oldDebt: '', depositAmount: '', paidAmount: '', paymentInWords: '',
   priceType: 'retail', isDebt: false, documentMode: 'standard',
   lines: [newLine()],
@@ -121,6 +122,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const [section, setSection] = useState('documents')
   const [form, setForm] = useState(() => newForm())
   const [documents, setDocuments] = useState([])
+  const [linkedIssues, setLinkedIssues] = useState([])
   const [customerDebts, setCustomerDebts] = useState([])
   const [readOnly, setReadOnly] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -190,6 +192,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const reset = () => {
     setType('salesInvoice')
     setForm(newForm())
+    setLinkedIssues([])
     setReadOnly(false)
     setError('')
     setNotice('')
@@ -199,6 +202,8 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
     setError('')
     try {
       const document = await getErpDocument(id)
+      const linked = document.type === 'salesInvoice' ? await getErpDocuments({ sourceDocumentId: document._id }).catch(() => []) : []
+      setLinkedIssues(linked)
       setType(document.type)
       setForm({
         ...document,
@@ -267,7 +272,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const print = () => window.print()
   const forwardInvoice = () => {
     setType('stockIssue')
-    setForm((current) => ({ ...current, type: 'stockIssue', documentNumber: newNumber('stockIssue'), issuerName: 'Kho xuất hàng', note: `Xuất theo hóa đơn ${current.documentNumber}. ${current.note || ''}`.trim(), lines: current.lines.map((line) => ({ ...line, warehouse: line.warehouse || 'thanh-phu' })) }))
+    setForm((current) => ({ ...current, type: 'stockIssue', sourceDocumentId: current._id, sourceDocumentNumber: current.documentNumber, documentNumber: newNumber('stockIssue'), issuerName: 'Kho xuất hàng', note: `Xuất theo hóa đơn ${current.documentNumber}. ${current.note || ''}`.trim(), lines: current.lines.map((line) => ({ ...line, warehouse: line.warehouse || 'thanh-phu' })) }))
     setReadOnly(false)
     setNotice('Chọn kho và số lượng thực xuất cho từng dòng. Các mặt hàng chưa xuất sẽ không bị trừ tồn.')
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -290,6 +295,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
             <button type="button" role="tab" aria-selected={type === 'stockIssue'} disabled={readOnly} onClick={() => changeType('stockIssue')}>Phiếu xuất kho</button>
           </div>
           <div className="erp-form-grid">
+            {type === 'stockIssue' && form.sourceDocumentNumber && <p className="erp-customer-debt-hint erp-form-wide">Phiếu xuất liên kết hóa đơn <b>{form.sourceDocumentNumber}</b>; khách hàng, địa chỉ và mặt hàng đã được lấy từ hóa đơn.</p>}
             <label>Số chứng từ<input disabled={readOnly} value={form.documentNumber} onChange={(event) => change('documentNumber', event.target.value)} /></label>
             <label>Ngày lập<input type="date" disabled={readOnly} value={form.documentDate} onChange={(event) => change('documentDate', event.target.value)} /></label>
             <label>Khách hàng<input disabled={readOnly} required value={form.customerName} onChange={(event) => change('customerName', event.target.value)} onBlur={(event) => { const match = customerDebts.find((item) => normalizeCustomerName(item.customerName) === normalizeCustomerName(event.target.value)); if (match && !form.customerPhone) change('customerPhone', match.customerPhone || '') }} /></label>
@@ -329,7 +335,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
           </div>
         </section>
 
-        <aside className="erp-saved-documents"><h2>Chứng từ gần đây</h2>{documents.length === 0 ? <p>Chưa có chứng từ đã lưu.</p> : documents.slice(0, 12).map((document) => <button key={document._id} type="button" onClick={() => reopen(document._id)}><span><strong>{document.documentNumber}</strong><small>{document.customerName} · {printedDate(new Date(document.documentDate).toISOString().slice(0, 10))}</small></span><i>{document.type === 'salesInvoice' ? 'Hóa đơn' : 'Phiếu xuất'}</i></button>)}</aside>
+        <aside className="erp-saved-documents"><h2>Chứng từ gần đây</h2>{documents.length === 0 ? <p>Chưa có chứng từ đã lưu.</p> : documents.slice(0, 12).map((document) => <button key={document._id} type="button" onClick={() => reopen(document._id)}><span><strong>{document.documentNumber}</strong><small>{document.customerName} · {printedDate(new Date(document.documentDate).toISOString().slice(0, 10))}</small></span><i>{document.type === 'salesInvoice' ? 'Hóa đơn' : 'Phiếu xuất'}</i></button>)}{type === 'salesInvoice' && readOnly && <div className="erp-linked-documents"><h3>Phiếu xuất liên kết</h3>{linkedIssues.length ? linkedIssues.map((issue) => <button key={issue._id} type="button" onClick={() => reopen(issue._id)}><span><strong>{issue.documentNumber}</strong><small>{printedDate(new Date(issue.documentDate).toISOString().slice(0, 10))}</small></span><i>Mở phiếu xuất</i></button>) : <p>Chưa có phiếu xuất cho hóa đơn này.</p>}</div>}</aside>
       </div>
     </div>
 
@@ -352,6 +358,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
         <footer className="erp-paper__signatures"><span>KHÁCH HÀNG</span><span>NGƯỜI LẬP PHIẾU</span></footer>
       </> : <>
         <header className="erp-paper__issue-heading"><div><small>{form.issuerName || 'ĐƠN VỊ: CỬA HÀNG'}</small><h1>PHIẾU XUẤT KHO</h1></div><div><span>Số: <b>{form.documentNumber}</b></span><time>{printedDate(form.documentDate)}</time></div></header>
+        {form.sourceDocumentNumber && <p className="erp-paper__issue-note"><b>Hóa đơn liên kết:</b><span>{form.sourceDocumentNumber}</span></p>}
         <div className="erp-paper__issue-meta"><p><b>Khách hàng:</b><span>{form.customerName || '................................................'}</span><b>Điện thoại:</b><span>{form.customerPhone || ' '}</span></p><p><b>Địa chỉ:</b><span>{form.customerAddress || ' '}</span></p><p><b>Địa chỉ giao hàng:</b><span>{form.deliveryAddress || form.customerAddress || ' '}</span><b>Ngày giao:</b><span>{printedDate(form.deliveryDate)}</span></p></div>
         <table className="erp-paper__table erp-paper__table--issue"><thead><tr><th>Stt</th>{type === 'stockIssue' && <th>Kho xuất</th>}<th>Mã hàng</th><th>Tên hàng</th><th>Đơn vị</th><th>Số lượng</th><th>Ghi chú (hộp, bao...)</th><th>Trọng lượng</th></tr></thead><tbody>
           {form.lines.map((line, index) => { const product = productById.get(line.productId); const warehouseLabel = warehouses.find(([value]) => value === (line.warehouse || 'thanh-phu'))?.[1] || ''; return <tr key={line.key}><td>{index + 1}</td>{type === 'stockIssue' && <td>{warehouseLabel}</td>}<td>{product?.sku || ''}</td><td>{product?.name || ''}</td><td>{product?.unit || ''}</td><td>{quantityText(line.quantity)}</td><td>{line.packageNote || ''}</td><td>{quantityText(line.weight)}</td></tr> })}

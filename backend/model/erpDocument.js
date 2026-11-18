@@ -17,6 +17,8 @@ const documentLineSchema = new mongoose.Schema({
 const erpDocumentSchema = new mongoose.Schema({
   documentNumber: { type: String, required: true, trim: true, uppercase: true, maxlength: 60, unique: true },
   type: { type: String, enum: ["salesInvoice", "stockIssue"], required: true },
+  sourceDocumentId: { type: mongoose.Schema.Types.ObjectId, ref: "ErpDocument", default: null, index: true },
+  sourceDocumentNumber: { type: String, trim: true, default: "", maxlength: 60 },
   documentDate: { type: Date, required: true },
   deliveryDate: { type: Date, default: null },
   customerName: { type: String, required: true, trim: true, maxlength: 160 },
