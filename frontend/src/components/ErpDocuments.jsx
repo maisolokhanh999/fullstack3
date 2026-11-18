@@ -130,10 +130,13 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const [notice, setNotice] = useState('')
   const [customerAccountOpen, setCustomerAccountOpen] = useState(false)
   const [customerAccount, setCustomerAccount] = useState({ name: '', phone: '', address: '' })
+  const [productSearch, setProductSearch] = useState('')
+  const [selectedProductIds, setSelectedProductIds] = useState([])
 
   const productById = useMemo(() => new Map(products.map((product) => [product._id, product])), [products])
   const total = form.lines.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0), 0)
   const totalWeight = form.lines.reduce((sum, line) => sum + Number(line.weight || 0), 0)
+  const matchingProducts = products.filter((product) => `${product.name} ${product.sku}`.toLocaleLowerCase('vi-VN').includes(productSearch.trim().toLocaleLowerCase('vi-VN')))
 
   const loadDocuments = async () => {
     try { setDocuments(await getErpDocuments()) }
@@ -176,10 +179,26 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
       lines: current.lines.map((item) => item.key === line.key ? {
         ...item,
         productId,
+        productSearch: undefined,
         unitPrice: form.priceType === 'store' ? product?.storePrice || 0 : product?.salePrice || 0,
         weight: product?.weightPerUnit ? Number(item.quantity || 0) * product.weightPerUnit : item.weight,
       } : item),
     }))
+  }
+  const addSelectedProducts = () => {
+    if (!selectedProductIds.length) return
+    const newLines = selectedProductIds.map((productId) => {
+      const product = productById.get(productId)
+      return {
+        ...newLine(),
+        productId,
+        unitPrice: form.priceType === 'store' ? product?.storePrice || 0 : product?.salePrice || 0,
+        weight: 0,
+      }
+    })
+    setForm((current) => ({ ...current, lines: [...current.lines, ...newLines] }))
+    setSelectedProductIds([])
+    setProductSearch('')
   }
   const changePriceType = (priceType) => setForm((current) => ({
     ...current,
@@ -193,6 +212,8 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
     setType('salesInvoice')
     setForm(newForm())
     setLinkedIssues([])
+    setProductSearch('')
+    setSelectedProductIds([])
     setReadOnly(false)
     setError('')
     setNotice('')
@@ -319,12 +340,13 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
             <label className="erp-form-wide">Ghi chú<input disabled={readOnly} value={form.note} onChange={(event) => change('note', event.target.value)} /></label>
           </div>
           <div className="erp-document-line-editor">
+            {!readOnly && <div className="erp-product-picker"><label>Tìm và chọn nhiều mặt hàng<input type="search" placeholder="Gõ tên hoặc mã sản phẩm" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} /></label><div className="erp-product-picker__results">{matchingProducts.slice(0, 40).map((product) => <label key={product._id}><input type="checkbox" checked={selectedProductIds.includes(product._id)} onChange={(event) => setSelectedProductIds((current) => event.target.checked ? [...current, product._id] : current.filter((id) => id !== product._id))} /><span>{product.name}<small>{product.sku} · Tồn {quantityText(product.currentStock)} {product.unit}</small></span></label>)}{matchingProducts.length > 40 && <small>Đang hiện 40 kết quả đầu tiên; hãy gõ thêm để thu hẹp kết quả.</small>}{matchingProducts.length === 0 && <small>Không tìm thấy sản phẩm khớp.</small>}</div><button type="button" className="erp-button erp-button--outline" disabled={!selectedProductIds.length} onClick={addSelectedProducts}>Thêm {selectedProductIds.length} mặt hàng đã chọn</button></div>}
             <div className="erp-document-line-heading"><h2>Hàng hóa</h2>{!readOnly && <button type="button" className="erp-button erp-button--outline" onClick={() => setForm((current) => ({ ...current, lines: [...current.lines, newLine()] }))}>＋ Thêm dòng</button>}</div>
             {form.lines.map((line, index) => {
               const product = productById.get(line.productId)
               return <div className="erp-document-line" key={line.key}>
                 <span className="erp-document-line__number">{index + 1}</span>
-                <label className="erp-line-product">Hàng hóa<select disabled={readOnly} value={line.productId} onChange={(event) => chooseProduct(line, event.target.value)}><option value="">Chọn hàng</option>{products.map((item) => <option key={item._id} value={item._id}>{item.name} · {item.sku}</option>)}</select></label>
+                <label className="erp-line-product">Tìm sản phẩm<input list={`product-options-${line.key}`} disabled={readOnly} placeholder="Gõ tên hoặc mã hàng" value={line.productSearch ?? (product ? `${product.name} · ${product.sku}` : '')} onChange={(event) => { const value = event.target.value; const normalized = value.trim().toLocaleLowerCase('vi-VN'); const match = products.find((item) => `${item.name} · ${item.sku}`.toLocaleLowerCase('vi-VN') === normalized || item.sku.toLocaleLowerCase('vi-VN') === normalized); if (match) chooseProduct(line, match._id); else setForm((current) => ({ ...current, lines: current.lines.map((item) => item.key === line.key ? { ...item, productId: '', productSearch: value, unitPrice: 0 } : item) })) }} /><datalist id={`product-options-${line.key}`}>{products.map((item) => <option key={item._id} value={`${item.name} · ${item.sku}`} />)}</datalist></label>
                 <label>Số lượng<input type="number" min="0.001" step="0.001" disabled={readOnly} value={line.quantity} onChange={(event) => changeLine(line.key, 'quantity', event.target.value)} /></label>
                 {type === 'stockIssue' && <label>Kho xuất<select disabled={readOnly} value={line.warehouse || 'thanh-phu'} onChange={(event) => changeLine(line.key, 'warehouse', event.target.value)}>{warehouses.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>}
                 {type === 'salesInvoice' ? <label>Đơn giá<input type="number" min="0" step="0.01" readOnly value={line.unitPrice} /></label> : <label>Trọng lượng<input type="number" min="0" step="0.001" disabled={readOnly} value={line.weight} onChange={(event) => changeLine(line.key, 'weight', event.target.value)} /></label>}
