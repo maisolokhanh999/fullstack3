@@ -213,7 +213,8 @@ export const createErpDocument = async (req, res) => {
         const bankPaidAmount = body.bankPaidAmount ?? 0;
         const paymentAmount = roundMoney(cashPaidAmount + bankPaidAmount);
         const paymentMethod = body.paymentMethod || sourceDocument.paymentMethod || "cash";
-        const previouslyPaid = sourceDocument.fulfillmentStatus === "pending" ? 0 : sourceDocument.paidAmount;
+        const wasPending = sourceDocument.fulfillmentStatus === "pending";
+        const previouslyPaid = wasPending ? 0 : sourceDocument.paidAmount;
         const outstanding = roundMoney(Math.max(0, totalAmount + sourceDocument.oldDebt - sourceDocument.depositAmount - previouslyPaid - (sourceDocument.debtResetAmount || 0)));
         if (paymentAmount > 0 && paymentMethod === "mixed" && (!cashPaidAmount || !bankPaidAmount)) throw new ErpError(400, "Thanh toán kết hợp cần có cả tiền mặt và chuyển khoản");
         if ((paymentMethod === "cash" && bankPaidAmount > 0) || (paymentMethod === "bankTransfer" && cashPaidAmount > 0)) throw new ErpError(400, "Số tiền không khớp hình thức thanh toán đã chọn");
@@ -224,8 +225,8 @@ export const createErpDocument = async (req, res) => {
         sourceDocument.totalWeight = totalWeight;
         sourceDocument.fulfillmentStatus = shippedTotal >= requestedTotal - 0.000001 ? "complete" : "partial";
         sourceDocument.paymentMethod = paymentMethod;
-        sourceDocument.cashPaidAmount += cashPaidAmount;
-        sourceDocument.bankPaidAmount += bankPaidAmount;
+        sourceDocument.cashPaidAmount = (wasPending ? 0 : sourceDocument.cashPaidAmount) + cashPaidAmount;
+        sourceDocument.bankPaidAmount = (wasPending ? 0 : sourceDocument.bankPaidAmount) + bankPaidAmount;
         sourceDocument.paidAmount = previouslyPaid + paymentAmount;
         await sourceDocument.save({ session });
 
@@ -341,8 +342,20 @@ export const createErpCustomer = async (req, res) => {
     const { name, phone = "", address = "", note = "" } = req.body;
     if (!name?.trim()) throw new ErpError(400, "Tên khách hàng là bắt buộc");
     const customerKey = customerKeyOf(name);
-    const customer = await ErpCustomer.create({ name: name.trim(), customerKey, phone, address, note });
-    res.status(201).json({ success: true, data: customer });
+    const customerData = { name: name.trim(), customerKey, phone, address, note };
+    let customer;
+    try {
+      customer = await ErpCustomer.findOneAndUpdate(
+        { customerKey },
+        { $set: customerData },
+        { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true },
+      );
+    } catch (error) {
+      if (error.code !== 11000) throw error;
+      customer = await ErpCustomer.findOneAndUpdate({ customerKey }, { $set: customerData }, { new: true, runValidators: true });
+      if (!customer) throw error;
+    }
+    res.status(200).json({ success: true, data: customer });
   } catch (error) { respondError(res, error, req); }
 };
 

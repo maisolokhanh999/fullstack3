@@ -417,6 +417,7 @@
 .erp-invoice-payment-entry { display: grid; justify-items: start; gap: 10px; }
 .erp-invoice-payment-entry__fields { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 12px; border: 1px solid #e2c985; border-radius: 6px; background: #fff9e9; }
 .erp-invoice-payment-entry__fields p { grid-column: 1 / -1; margin: 0; color: #76663e; font-size: 11px; }
+.erp-invoice-payment-entry__fields > strong { grid-column: 1 / -1; color: #244638; font-size: 12px; text-align: right; }
 .erp-invoice-payment-entry__fields label { display: grid; gap: 5px; color: #65562e; font-size: 10px; font-weight: 700; }
 .erp-invoice-payment-entry__fields input { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid #e1d5b3; border-radius: 4px; color: #3f3a2a; background: #fff; font: inherit; font-size: 11px; }
 .erp-document-line-editor { border-top: 1px solid var(--erp-line); padding-top: 14px; }
