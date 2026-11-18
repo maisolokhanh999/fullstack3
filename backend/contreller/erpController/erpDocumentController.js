@@ -64,10 +64,11 @@ export const createErpDocument = async (req, res) => {
         if (!mongoose.isValidObjectId(body.sourceDocumentId)) throw new ErpError(400, "Mã hóa đơn liên kết không hợp lệ");
         sourceDocument = await ErpDocument.findOne({ _id: body.sourceDocumentId, type: "salesInvoice" }).session(session);
         if (!sourceDocument) throw new ErpError(404, "Không tìm thấy hóa đơn gốc");
+        const requestedLines = sourceDocument.requestedLines?.length ? sourceDocument.requestedLines : sourceDocument.lines;
         const invoiced = new Map();
         const shipped = new Map();
         const requested = new Map();
-        for (const line of sourceDocument.lines) {
+        for (const line of requestedLines) {
           const id = String(line.productId);
           invoiced.set(id, (invoiced.get(id) || 0) + line.quantity);
         }
@@ -91,7 +92,7 @@ export const createErpDocument = async (req, res) => {
       const lines = body.lines.map((line) => {
         const product = productById.get(String(line.productId));
         const quantity = line.quantity;
-        const unitPrice = body.type === "salesInvoice" && body.documentMode !== "noPrice"
+        const unitPrice = body.type === "salesInvoice"
           ? (body.priceType === "store" ? product.storePrice : product.salePrice)
           : 0;
         return {
@@ -122,6 +123,8 @@ export const createErpDocument = async (req, res) => {
         type: body.type,
         sourceDocumentId: sourceDocument?._id || null,
         sourceDocumentNumber: sourceDocument?.documentNumber || "",
+        requestedLines: body.type === "salesInvoice" ? lines : [],
+        fulfillmentStatus: body.type === "salesInvoice" ? "pending" : undefined,
         documentDate,
         deliveryDate,
         customerName: body.customerName.trim(),
@@ -174,6 +177,43 @@ export const createErpDocument = async (req, res) => {
         affectedProductIds.add(String(line.productId));
       }
 
+      if (sourceDocument && body.type === "stockIssue") {
+        const priorIssues = await ErpDocument.find({ type: "stockIssue", sourceDocumentId: sourceDocument._id }).session(session);
+        const shippedByProduct = new Map();
+        for (const issue of priorIssues) for (const line of issue.lines) {
+          const id = String(line.productId);
+          shippedByProduct.set(id, (shippedByProduct.get(id) || 0) + line.quantity);
+        }
+        const requestedLines = sourceDocument.requestedLines?.length ? sourceDocument.requestedLines : sourceDocument.lines;
+        const remainingByProduct = new Map();
+        const invoicedByProduct = new Map();
+        for (const line of requestedLines) {
+          const id = String(line.productId);
+          invoicedByProduct.set(id, (invoicedByProduct.get(id) || 0) + line.quantity);
+        }
+        for (const [id, quantity] of invoicedByProduct) remainingByProduct.set(id, Math.max(0, quantity - (shippedByProduct.get(id) || 0)));
+        const syncedLines = requestedLines.flatMap((line) => {
+          const id = String(line.productId);
+          const remaining = remainingByProduct.get(id) || 0;
+          const quantity = Math.min(line.quantity, remaining);
+          remainingByProduct.set(id, Math.max(0, remaining - quantity));
+          if (!quantity) return [];
+          const weight = Math.round((quantity * (productById.get(id)?.weightPerUnit || 0) + Number.EPSILON) * 1000) / 1000;
+          const unitPrice = line.unitPrice || 0;
+          return [{ ...line.toObject?.() || line, quantity, unitPrice, amount: roundMoney(quantity * unitPrice), weight }];
+        });
+        const requestedTotal = [...invoicedByProduct.values()].reduce((sum, quantity) => sum + quantity, 0);
+        const shippedTotal = [...shippedByProduct.values()].reduce((sum, quantity) => sum + quantity, 0);
+        const totalAmount = roundMoney(syncedLines.reduce((sum, line) => sum + line.amount, 0));
+        const totalWeight = Math.round((syncedLines.reduce((sum, line) => sum + line.weight, 0) + Number.EPSILON) * 1000) / 1000;
+        sourceDocument.lines = syncedLines;
+        sourceDocument.totalAmount = totalAmount;
+        sourceDocument.totalWeight = totalWeight;
+        sourceDocument.fulfillmentStatus = shippedTotal >= requestedTotal - 0.000001 ? "complete" : "partial";
+        if (!sourceDocument.isDebt) sourceDocument.paidAmount = roundMoney(Math.max(0, totalAmount + sourceDocument.oldDebt - sourceDocument.depositAmount));
+        await sourceDocument.save({ session });
+      }
+
       for (const productId of affectedProductIds) await rebuildProductStock(productId, session);
       await createdDocument.save({ session });
       return createdDocument;
@@ -222,7 +262,7 @@ export const getErpDocument = async (req, res) => {
 
 export const getCustomerDebts = async (req, res) => {
   try {
-    const docs = await ErpDocument.find({ type: "salesInvoice", isDebt: true }).sort({ documentDate: 1, createdAt: 1 });
+    const docs = await ErpDocument.find({ type: "salesInvoice", isDebt: true, fulfillmentStatus: { $ne: "pending" } }).sort({ documentDate: 1, createdAt: 1 });
     const paymentGroups = await ErpPayment.aggregate([
       { $unwind: "$allocations" },
       { $group: { _id: "$allocations.documentId", paid: { $sum: "$allocations.amount" } } },
@@ -289,6 +329,7 @@ export const createCustomerPayment = async (req, res) => {
       const invoices = await ErpDocument.find({
         type: "salesInvoice",
         isDebt: true,
+        fulfillmentStatus: { $ne: "pending" },
         $or: [
           { customerKey },
           { customerName: { $regex: `^${escapedName}$`, $options: "i" } },

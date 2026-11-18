@@ -217,9 +217,10 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
         getErpDocument(selectedInvoice._id),
         getErpDocuments({ sourceDocumentId: selectedInvoice._id }),
       ])
+      const invoiceLines = invoice.requestedLines?.length ? invoice.requestedLines : invoice.lines
       const invoicedByProduct = new Map()
       const shippedByProduct = new Map()
-      for (const line of invoice.lines) {
+      for (const line of invoiceLines) {
         const productId = String(line.productId)
         invoicedByProduct.set(productId, (invoicedByProduct.get(productId) || 0) + Number(line.quantity || 0))
       }
@@ -228,7 +229,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
         shippedByProduct.set(productId, (shippedByProduct.get(productId) || 0) + Number(line.quantity || 0))
       }
       const remainingByProduct = new Map([...invoicedByProduct].map(([id, amount]) => [id, Math.max(0, amount - (shippedByProduct.get(id) || 0))]))
-      const lines = invoice.lines.flatMap((line) => {
+      const lines = invoiceLines.flatMap((line) => {
         const id = String(line.productId)
         const remaining = remainingByProduct.get(id) || 0
         const quantity = Math.min(Number(line.quantity || 0), remaining)
@@ -336,7 +337,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
         lines: saved.lines.map((line) => ({ ...line, key: `saved-${line.movementId || line.sku}-${Math.random()}` })),
       })
       setReadOnly(true)
-      setNotice(type === 'stockIssue' ? 'Đã lưu phiếu xuất và trừ tồn ở các kho đã chọn.' : 'Đã lưu hóa đơn. Chưa có mặt hàng nào bị trừ kho; dùng “Chuyển tiếp sang phiếu xuất” khi hàng thực sự xuất.')
+      setNotice(type === 'stockIssue' ? 'Đã chốt phiếu xuất, trừ tồn kho và cập nhật số lượng, thành tiền của hóa đơn liên kết.' : 'Đã lưu tạm yêu cầu xuất hàng. Tồn kho và hóa đơn sẽ được chốt theo số lượng thực xuất trên phiếu xuất kho.')
     } catch (saveError) { setError(saveError.message) }
     finally { setBusy(false) }
   }
@@ -352,10 +353,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   }
   const print = () => window.print()
   const forwardInvoice = () => {
-    setType('stockIssue')
-    setForm((current) => ({ ...current, type: 'stockIssue', sourceDocumentId: current._id, sourceDocumentNumber: current.documentNumber, documentNumber: newNumber('stockIssue'), issuerName: 'Kho xuất hàng', note: `Xuất theo hóa đơn ${current.documentNumber}. ${current.note || ''}`.trim(), lines: current.lines.map((line) => ({ ...line, warehouse: line.warehouse || 'thanh-phu' })) }))
-    setReadOnly(false)
-    setNotice('Chọn kho và số lượng thực xuất cho từng dòng. Các mặt hàng chưa xuất sẽ không bị trừ tồn.')
+    selectInvoiceForIssue(`${form.documentNumber} · ${form.customerName}`)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -367,7 +365,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   return <main className="erp-page erp-document-mode">
     <header className="erp-topbar erp-document-controls"><button className="erp-button erp-button--quiet" type="button" onClick={onBack}>← Kho hàng</button><a className="erp-brand" href="/"><span>ERP</span><i>CHỨNG TỪ</i></a><div className="erp-topbar__right"><button className="erp-button erp-button--quiet" type="button" onClick={() => setSection('debts')}>Kiểm tra dư nợ</button><button className="erp-button erp-button--quiet" type="button" onClick={reset}>＋ Tạo mới</button></div></header>
     <div className="erp-content erp-document-controls">
-      <section className="erp-titlebar"><div><p className="erp-eyebrow">MẪU IN A4 · GHI SỔ KHO</p><h1>Chứng từ bán hàng</h1><p className="erp-subtitle">Lưu hóa đơn bán hàng riêng; chỉ trừ tồn khi lập phiếu xuất thực tế theo từng kho.</p></div><div className="erp-document-actions">{readOnly && type === 'salesInvoice' && <button className="erp-button erp-button--outline" type="button" onClick={forwardInvoice}>Chuyển tiếp sang phiếu xuất</button>}<button className="erp-button erp-button--outline" type="button" onClick={print}>In / Lưu PDF</button>{!readOnly && <button className="erp-button erp-button--dark" type="button" disabled={busy} onClick={save}>{busy ? 'Đang ghi...' : type === 'stockIssue' ? 'Lưu phiếu xuất & trừ tồn kho' : 'Lưu hóa đơn'}</button>}</div></section>
+      <section className="erp-titlebar"><div><p className="erp-eyebrow">MẪU IN A4 · GHI SỔ KHO</p><h1>Chứng từ bán hàng</h1><p className="erp-subtitle">Lưu yêu cầu xuất tạm; chốt số lượng và doanh thu theo phiếu xuất thực tế.</p></div><div className="erp-document-actions">{readOnly && type === 'salesInvoice' && <button className="erp-button erp-button--outline" type="button" onClick={forwardInvoice}>Lập phiếu xuất từ yêu cầu</button>}<button className="erp-button erp-button--outline" type="button" onClick={print}>In / Lưu PDF</button>{!readOnly && <button className="erp-button erp-button--dark" type="button" disabled={busy} onClick={save}>{busy ? 'Đang ghi...' : type === 'stockIssue' ? 'Chốt phiếu xuất & cập nhật hóa đơn' : 'Lưu tạm yêu cầu xuất'}</button>}</div></section>
       {(error || notice) && <div className={error ? 'erp-alert erp-alert--error' : 'erp-alert erp-alert--success'} role={error ? 'alert' : 'status'}>{error || notice}<button type="button" aria-label="Đóng thông báo" onClick={() => { setError(''); setNotice('') }}>×</button></div>}
       <div className="erp-document-layout">
         <section className="erp-document-editor">
@@ -425,7 +423,8 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
     {customerAccountOpen && <div className="erp-dialog-backdrop" role="presentation"><section className="erp-dialog" role="dialog" aria-modal="true" aria-labelledby="erp-customer-title"><header><h2 id="erp-customer-title">Tạo tài khoản khách hàng</h2></header><div className="erp-form-grid"><label className="erp-form-wide">Tên khách hàng<input autoFocus required value={customerAccount.name} onChange={(event) => setCustomerAccount((current) => ({ ...current, name: event.target.value }))} /></label><label>Điện thoại<input value={customerAccount.phone} onChange={(event) => setCustomerAccount((current) => ({ ...current, phone: event.target.value }))} /></label><label>Địa chỉ<input value={customerAccount.address} onChange={(event) => setCustomerAccount((current) => ({ ...current, address: event.target.value }))} /></label><footer className="erp-form-wide erp-receipt-actions"><button type="button" className="erp-button" onClick={() => setCustomerAccountOpen(false)}>Hủy</button><button type="button" className="erp-button erp-button--dark" disabled={!customerAccount.name.trim()} onClick={saveCustomerAccount}>Tạo khách hàng</button></footer></div></section></div>}
     <article className={`erp-paper erp-paper--${type}`} aria-label={type === 'salesInvoice' ? 'Hóa đơn bán hàng' : 'Phiếu xuất kho'}>
       {type === 'salesInvoice' ? <>
-        <header className="erp-paper__invoice-heading"><h1>HÓA ĐƠN BÁN HÀNG</h1><div className="erp-paper__number"><span>HĐ:</span><strong>{form.documentNumber}</strong><time>{printedDate(form.documentDate)}</time></div></header>
+        <header className="erp-paper__invoice-heading"><h1>{form.fulfillmentStatus === 'complete' ? 'HÓA ĐƠN BÁN HÀNG' : 'YÊU CẦU XUẤT HÀNG'}</h1><div className="erp-paper__number"><span>HĐ:</span><strong>{form.documentNumber}</strong><time>{printedDate(form.documentDate)}</time></div></header>
+        {form.fulfillmentStatus && <p className="erp-paper__note"><b>Trạng thái xuất:</b><span>{form.fulfillmentStatus === 'complete' ? 'Đã chốt đủ số lượng' : form.fulfillmentStatus === 'partial' ? 'Đã xuất một phần; số lượng đang là số đã xuất' : 'Yêu cầu tạm, chưa chốt số lượng'}</span></p>}
         <div className="erp-paper__customer"><b>Khách hàng:</b><strong>{form.customerName || '........................................................'}</strong></div>
         <div className="erp-paper__meta"><span>ĐTDD:</span><b>{form.customerPhone || ' '}</b></div>
         <div className="erp-paper__meta"><span>Địa chỉ:</span><b>{form.customerAddress || ' '}</b></div>

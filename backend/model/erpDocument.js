@@ -19,6 +19,8 @@ const erpDocumentSchema = new mongoose.Schema({
   type: { type: String, enum: ["salesInvoice", "stockIssue"], required: true },
   sourceDocumentId: { type: mongoose.Schema.Types.ObjectId, ref: "ErpDocument", default: null, index: true },
   sourceDocumentNumber: { type: String, trim: true, default: "", maxlength: 60 },
+  requestedLines: { type: [documentLineSchema], default: [] },
+  fulfillmentStatus: { type: String, enum: ["pending", "partial", "complete"], default: "complete" },
   documentDate: { type: Date, required: true },
   deliveryDate: { type: Date, default: null },
   customerName: { type: String, required: true, trim: true, maxlength: 160 },
