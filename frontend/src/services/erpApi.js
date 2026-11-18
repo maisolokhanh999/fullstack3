@@ -85,6 +85,11 @@ export async function createErpDocument(payload) {
   return (await response.json()).data
 }
 
+export async function finalizeErpInvoice(documentId, payload) {
+  const response = await erpRequest(`/erp/documents/${encodeURIComponent(documentId)}/finalize`, { method: 'PUT', body: payload })
+  return (await response.json()).data
+}
+
 export async function createErpCustomer(payload) {
   const response = await erpRequest('/erp/customers', { method: 'POST', body: payload })
   return (await response.json()).data

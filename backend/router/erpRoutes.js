@@ -8,6 +8,7 @@ import {
   getErpDocument,
   getErpDocuments,
   getErpCustomers,
+  finalizeErpInvoice,
 } from "../contreller/erpController/erpDocumentController.js";
 import { uploadErpImage } from "../contreller/erpController/erpUploadController.js";
 import { parsePaymentProof } from "../erp/paymentUpload.js";
@@ -37,6 +38,7 @@ router.delete("/products/:id", deleteProduct);
 
 router.get("/documents", getErpDocuments);
 router.post("/documents", createErpDocument);
+router.put("/documents/:id/finalize", finalizeErpInvoice);
 router.get("/documents/:id", getErpDocument);
 router.get("/debts", getCustomerDebts);
 router.get("/customers", getErpCustomers);

@@ -21,6 +21,7 @@ const erpDocumentSchema = new mongoose.Schema({
   sourceDocumentNumber: { type: String, trim: true, default: "", maxlength: 60 },
   requestedLines: { type: [documentLineSchema], default: [] },
   fulfillmentStatus: { type: String, enum: ["pending", "partial", "complete"], default: "complete" },
+  finalizedDirect: { type: Boolean, default: false },
   documentDate: { type: Date, required: true },
   deliveryDate: { type: Date, default: null },
   customerName: { type: String, required: true, trim: true, maxlength: 160 },
