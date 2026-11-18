@@ -20,6 +20,7 @@ const localInputDate = (value) => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 }
 const formatDate = (value) => new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
+const quantityText = (value) => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 3 })
 
 function ProductEditor({ product, onClose, onSaved }) {
   const [form, setForm] = useState({
