@@ -3,10 +3,12 @@ import "dotenv/config";
 import cors from "cors";
 import connectDB from "./configs/db.js";
 import routes from "./router/index.js";
+import { attachRequestId, sendErpError } from "./services/erpErrorHandler.js";
 
 const app = express();
 
 app.use(cors());
+app.use(attachRequestId);
 app.use(express.json({ limit: "1mb" }));
 app.use("/", routes);
 
@@ -15,12 +17,12 @@ app.get("/", (req, res) => {
 });
 
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: "ERP route không tồn tại" });
+  sendErpError(res, Object.assign(new Error("ERP route không tồn tại"), { status: 404 }), req);
 });
 
 app.use((error, req, res, next) => {
-  console.error(error);
-  res.status(500).json({ success: false, message: "Lỗi máy chủ ERP" });
+  sendErpError(res, error, req, "Lỗi máy chủ ERP");
+
 });
 
 await connectDB();

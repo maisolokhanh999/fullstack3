@@ -12,14 +12,21 @@ const erpRequest = async (path, { method = 'GET', body } = {}) => {
       ...(body ? { body: isFormData ? body : JSON.stringify(body) } : {}),
     })
   } catch {
-    throw new Error(`Không kết nối được ERP tại ${API_BASE_URL}. Kiểm tra backend và cấu hình CORS.`)
+    const error = new Error(`Không kết nối được ERP tại ${API_BASE_URL}. Kiểm tra backend và cấu hình CORS.`)
+    error.code = 'NETWORK-OFFLINE'
+    throw error
   }
 
   if (!response.ok) {
-    let message = `ERP trả về lỗi ${response.status}.`
-    try { message = (await response.json()).message || message } catch { /* Keep fallback for non-JSON responses. */ }
-    const error = new Error(message)
+    let payload = {}
+    try { payload = await response.json() } catch { /* Keep fallback for non-JSON responses. */ }
+    const message = payload.message || `ERP trả về lỗi ${response.status}.`
+    const code = payload.error?.code || `HTTP-${response.status}`
+    const requestId = payload.error?.requestId || response.headers.get('X-Request-Id') || ''
+    const error = new Error(`${code}${requestId ? ` · ${requestId}` : ''}: ${message}`)
     error.status = response.status
+    error.code = code
+    error.requestId = requestId
     throw error
   }
   return response

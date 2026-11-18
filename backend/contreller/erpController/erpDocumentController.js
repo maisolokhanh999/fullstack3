@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { sendErpError } from "../../services/erpErrorHandler.js";
 import ErpDocument from "../../model/erpDocument.js";
 import ErpMovement from "../../model/erpMovement.js";
 import ErpPayment from "../../model/erpPayment.js";
@@ -18,12 +19,7 @@ const validAmount = (value) => Number.isFinite(value) && value >= 0;
 const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 const customerKeyOf = (name) => name.trim().toLocaleLowerCase("vi-VN").normalize("NFC");
 
-const respondError = (res, error) => {
-  if (error.status) return res.status(error.status).json({ success: false, message: error.message });
-  if (error.code === 11000) return res.status(409).json({ success: false, message: "Số chứng từ đã tồn tại" });
-  console.error(error);
-  return res.status(500).json({ success: false, message: "Lỗi xử lý chứng từ ERP" });
-};
+const respondError = (res, error, req) => sendErpError(res, error, req, error.code === 11000 ? "Dữ liệu bị trùng" : "Lỗi xử lý ERP");
 
 const validateDocument = (body) => {
   if (!["salesInvoice", "stockIssue"].includes(body.type)) throw new ErpError(400, "Mẫu chứng từ không hợp lệ");
@@ -155,7 +151,7 @@ export const createErpDocument = async (req, res) => {
     });
 
     res.status(201).json({ success: true, data: document });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const getErpDocuments = async (req, res) => {
@@ -178,7 +174,7 @@ export const getErpDocuments = async (req, res) => {
     }
     const documents = await ErpDocument.find(filter).sort({ documentDate: -1, createdAt: -1 }).limit(300);
     res.json({ success: true, data: documents });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const getErpDocument = async (req, res) => {
@@ -188,7 +184,7 @@ export const getErpDocument = async (req, res) => {
     });
     if (!document) throw new ErpError(404, "Không tìm thấy chứng từ");
     res.json({ success: true, data: document });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const getCustomerDebts = async (req, res) => {
@@ -225,7 +221,7 @@ export const getCustomerDebts = async (req, res) => {
     }
     const result = [...customers.values()].filter((customer) => customer.balance > 0.005).sort((a, b) => b.balance - a.balance);
     res.json({ success: true, data: result });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const createErpCustomer = async (req, res) => {
@@ -235,7 +231,7 @@ export const createErpCustomer = async (req, res) => {
     const customerKey = customerKeyOf(name);
     const customer = await ErpCustomer.create({ name: name.trim(), customerKey, phone, address, note });
     res.status(201).json({ success: true, data: customer });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const getCustomerPayments = async (req, res) => {
@@ -243,7 +239,7 @@ export const getCustomerPayments = async (req, res) => {
     const key = req.params.customerKey;
     const payments = await ErpPayment.find({ customerKey: key }).sort({ paymentDate: -1 });
     res.json({ success: true, data: payments });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const createCustomerPayment = async (req, res) => {
@@ -300,5 +296,5 @@ export const createCustomerPayment = async (req, res) => {
     });
 
     res.status(201).json({ success: true, data: payment });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };

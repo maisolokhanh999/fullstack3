@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { sendErpError } from "../../services/erpErrorHandler.js";
 import mongoose from "mongoose";
 import ErpProduct from "../../model/erpProduct.js";
 import ErpMovement from "../../model/erpMovement.js";
@@ -15,12 +16,7 @@ import {
 
 const movementActor = process.env.ERP_ACTOR_NAME || "erp-api";
 
-const respondError = (res, error) => {
-  if (error.status) return res.status(error.status).json({ success: false, message: error.message });
-  if (error.code === 11000) return res.status(409).json({ success: false, message: "Mã SKU đã tồn tại" });
-  console.error(error);
-  return res.status(500).json({ success: false, message: "Lỗi xử lý dữ liệu ERP" });
-};
+const respondError = (res, error, req) => sendErpError(res, error, req, error.code === 11000 ? "Dữ liệu bị trùng" : "Lỗi xử lý ERP");
 
 export const getProducts = async (req, res) => {
   try {
@@ -37,7 +33,7 @@ export const getProducts = async (req, res) => {
     }
     const products = await ErpProduct.find(filter).sort({ name: 1 }).limit(500);
     res.json({ success: true, data: products });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const createProduct = async (req, res) => {
@@ -58,7 +54,7 @@ export const createProduct = async (req, res) => {
       isActive: req.body.isActive ?? true,
     });
     res.status(201).json({ success: true, data: product });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const getProduct = async (req, res) => {
@@ -67,7 +63,7 @@ export const getProduct = async (req, res) => {
     const product = await ErpProduct.findOne({ _id: req.params.id, isDeleted: false });
     if (!product) throw new ErpError(404, "Không tìm thấy sản phẩm");
     res.json({ success: true, data: product });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const updateProduct = async (req, res) => {
@@ -85,7 +81,7 @@ export const updateProduct = async (req, res) => {
     );
     if (!product) throw new ErpError(404, "Không tìm thấy sản phẩm");
     res.json({ success: true, data: product });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const deleteProduct = async (req, res) => {
@@ -96,7 +92,7 @@ export const deleteProduct = async (req, res) => {
     product.isDeleted = true;
     await product.save();
     res.json({ success: true, data: product });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const createMovement = async (req, res) => {
@@ -129,7 +125,7 @@ export const createMovement = async (req, res) => {
       return ErpMovement.findById(created._id).session(session);
     });
     res.status(201).json({ success: true, data: movement });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const createReceiptBatch = async (req, res) => {
@@ -179,7 +175,7 @@ export const createReceiptBatch = async (req, res) => {
     });
 
     res.status(201).json({ success: true, reference: batchReference, data: movements });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const updateMovement = async (req, res) => {
@@ -225,7 +221,7 @@ export const updateMovement = async (req, res) => {
       return ErpMovement.findById(existing._id).session(session);
     });
     res.json({ success: true, data: movement });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const getMovements = async (req, res) => {
@@ -235,7 +231,7 @@ export const getMovements = async (req, res) => {
       .sort({ movementDate: -1, createdAt: -1 })
       .limit(500);
     res.json({ success: true, data: movements });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const getShippedProducts = async (req, res) => {
@@ -245,7 +241,7 @@ export const getShippedProducts = async (req, res) => {
       .sort({ movementDate: -1 })
       .limit(500);
     res.json({ success: true, data: shipments });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const getProductMovements = async (req, res) => {
@@ -253,7 +249,7 @@ export const getProductMovements = async (req, res) => {
     const filter = buildMovementFilter({ ...req.query, productId: req.params.id });
     const movements = await ErpMovement.find(filter).sort({ movementDate: -1, createdAt: -1 }).limit(500);
     res.json({ success: true, data: movements });
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
 export const exportMovements = async (req, res) => {
@@ -308,6 +304,6 @@ export const exportMovements = async (req, res) => {
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename=erp-inventory-${req.query.year}-${String(req.query.month).padStart(2, "0")}.xlsx`);
     res.send(Buffer.from(buffer));
-  } catch (error) { respondError(res, error); }
+  } catch (error) { respondError(res, error, req); }
 };
 
