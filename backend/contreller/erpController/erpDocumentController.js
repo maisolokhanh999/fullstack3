@@ -120,10 +120,10 @@ export const createErpDocument = async (req, res) => {
         oldDebt: body.type === "salesInvoice" ? body.oldDebt ?? 0 : 0,
         depositAmount,
         isDebt: body.type === "salesInvoice" ? Boolean(body.isDebt) : false,
-        paymentMethod: body.type === "salesInvoice" ? body.paymentMethod || "cash" : "cash",
-        cashPaidAmount: body.type === "salesInvoice" ? body.cashPaidAmount ?? 0 : 0,
-        bankPaidAmount: body.type === "salesInvoice" ? body.bankPaidAmount ?? 0 : 0,
-        paidAmount: body.type === "salesInvoice" ? body.paidAmount ?? 0 : 0,
+        paymentMethod: body.paymentMethod || sourceDocument?.paymentMethod || "cash",
+        cashPaidAmount: body.cashPaidAmount ?? 0,
+        bankPaidAmount: body.bankPaidAmount ?? 0,
+        paidAmount: body.type === "salesInvoice" ? body.paidAmount ?? 0 : roundMoney((body.cashPaidAmount ?? 0) + (body.bankPaidAmount ?? 0)),
         priceType,
         documentMode: ["standard", "noPrice", "quantityDebt"].includes(body.documentMode) ? body.documentMode : "standard",
         paymentInWords: body.type === "salesInvoice" ? body.paymentInWords || "" : "",
@@ -210,7 +210,6 @@ export const createErpDocument = async (req, res) => {
         // pays the balance entirely in cash while the invoice is configured for both).
         if ((paymentMethod === "cash" && bankPaidAmount > 0) || (paymentMethod === "bankTransfer" && cashPaidAmount > 0)) throw new ErpError(400, "Số tiền không khớp hình thức thanh toán đã chọn");
         if (paymentAmount > outstanding + 0.005) throw new ErpError(400, "Tiền thanh toán vượt quá số còn phải trả sau khi trừ tiền cọc");
-        if (!sourceDocument.isDebt && paymentAmount + 0.005 < outstanding) throw new ErpError(400, "Cần thanh toán đủ số còn lại sau khi trừ tiền cọc để chốt hóa đơn");
         sourceDocument.lines = syncedLines;
         sourceDocument.requestedLines = syncedLines;
         sourceDocument.totalAmount = totalAmount;
@@ -220,6 +219,7 @@ export const createErpDocument = async (req, res) => {
         sourceDocument.cashPaidAmount = (wasPending ? 0 : sourceDocument.cashPaidAmount) + cashPaidAmount;
         sourceDocument.bankPaidAmount = (wasPending ? 0 : sourceDocument.bankPaidAmount) + bankPaidAmount;
         sourceDocument.paidAmount = previouslyPaid + paymentAmount;
+        if (paymentAmount + 0.005 < outstanding) sourceDocument.isDebt = true;
         await sourceDocument.save({ session });
 
         if (paymentAmount > 0 && isWalkInCustomer(sourceDocument.customerName)) {
@@ -304,7 +304,6 @@ export const finalizeErpInvoice = async (req, res) => {
       if (depositAmount > totalAmount + oldDebt) throw new ErpError(400, "Tiền cọc không thể lớn hơn tổng thanh toán");
       if ((body.paymentMethod === "cash" && bankPaidAmount > 0) || (body.paymentMethod === "bankTransfer" && cashPaidAmount > 0)) throw new ErpError(400, "Số tiền không khớp hình thức thanh toán đã chọn");
       if (paymentAmount > outstanding + 0.005) throw new ErpError(400, "Tiền thanh toán vượt quá số còn phải trả sau khi trừ tiền cọc");
-      if (!body.isDebt && paymentAmount + 0.005 < outstanding) throw new ErpError(400, "Cần thanh toán đủ số còn lại sau khi trừ tiền cọc để chốt hóa đơn");
 
       const affectedProductIds = new Set();
       for (let index = 0; index < lines.length; index += 1) {
@@ -345,7 +344,7 @@ export const finalizeErpInvoice = async (req, res) => {
       current.note = body.note || "";
       current.oldDebt = oldDebt;
       current.depositAmount = depositAmount;
-      current.isDebt = Boolean(body.isDebt);
+      current.isDebt = Boolean(body.isDebt) || paymentAmount + 0.005 < outstanding;
       current.paymentMethod = body.paymentMethod || "cash";
       current.cashPaidAmount = cashPaidAmount;
       current.bankPaidAmount = bankPaidAmount;
