@@ -45,9 +45,12 @@ export async function saveErpProduct(productId, payload) {
   return (await response.json()).data
 }
 
-export async function getErpMovements({ year, month, productName = '', shippedOnly = false }) {
+export async function getErpMovements({ year, month, dateFrom = '', dateTo = '', productName = '', warehouse = '', shippedOnly = false }) {
   const params = new URLSearchParams({ year, month })
+  if (dateFrom) params.set('dateFrom', dateFrom)
+  if (dateTo) params.set('dateTo', dateTo)
   if (productName) params.set('productName', productName)
+  if (warehouse) params.set('warehouse', warehouse)
   const path = shippedOnly ? '/erp/exports' : '/erp/movements'
   const response = await erpRequest(`${path}?${params}`)
   return (await response.json()).data || []
@@ -85,6 +88,11 @@ export async function createErpDocument(payload) {
 export async function createErpCustomer(payload) {
   const response = await erpRequest('/erp/customers', { method: 'POST', body: payload })
   return (await response.json()).data
+}
+
+export async function getErpCustomers() {
+  const response = await erpRequest('/erp/customers')
+  return (await response.json()).data || []
 }
 
 export async function downloadErpWorkbook({ year, month }) {

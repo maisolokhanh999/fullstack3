@@ -346,6 +346,13 @@ export const createErpCustomer = async (req, res) => {
   } catch (error) { respondError(res, error, req); }
 };
 
+export const getErpCustomers = async (_req, res) => {
+  try {
+    const customers = await ErpCustomer.find().sort({ name: 1 }).limit(1000);
+    res.json({ success: true, data: customers });
+  } catch (error) { respondError(res, error, _req); }
+};
+
 export const getCustomerPayments = async (req, res) => {
   try {
     const key = req.params.customerKey;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createErpCustomer, createErpDocument, createErpPayment, getErpCustomerPayments, getErpDebts, getErpDocument, getErpDocuments, uploadErpPaymentProof } from '../services/erpApi.js'
+import { createErpCustomer, createErpDocument, createErpPayment, getErpCustomerPayments, getErpCustomers, getErpDebts, getErpDocument, getErpDocuments, uploadErpPaymentProof } from '../services/erpApi.js'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const newNumber = (type) => `${type === 'salesInvoice' ? 'HD' : 'PX'}-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`
@@ -161,6 +161,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const [availableInvoices, setAvailableInvoices] = useState([])
   const [invoiceSearch, setInvoiceSearch] = useState('')
   const [linkedIssues, setLinkedIssues] = useState([])
+  const [customerProfiles, setCustomerProfiles] = useState([])
   const [customerDebts, setCustomerDebts] = useState([])
   const [readOnly, setReadOnly] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -186,9 +187,10 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
 
   const loadDocuments = async () => {
     try {
-      const [rows, invoices] = await Promise.all([getErpDocuments(), getErpDocuments({ type: 'salesInvoice' })])
+      const [rows, invoices, profiles] = await Promise.all([getErpDocuments(), getErpDocuments({ type: 'salesInvoice' }), getErpCustomers()])
       setDocuments(rows)
       setAvailableInvoices(invoices)
+      setCustomerProfiles(profiles)
     }
     catch (loadError) { setError(loadError.message) }
   }
@@ -198,24 +200,54 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   }, [])
 
   const normalizeCustomerName = (name) => name.trim().toLocaleLowerCase('vi-VN').normalize('NFC')
+  const rememberedCustomerProfiles = useMemo(() => {
+    const byName = new Map()
+    for (const profile of customerProfiles) {
+      const key = normalizeCustomerName(profile.name || '')
+      if (key && !byName.has(key)) byName.set(key, { name: profile.name, phone: profile.phone || '', address: profile.address || '' })
+    }
+    for (const document of documents) {
+      const key = normalizeCustomerName(document.customerName || '')
+      if (key && !byName.has(key)) byName.set(key, { name: document.customerName, phone: document.customerPhone || '', address: document.customerAddress || '' })
+    }
+    for (const customer of customerDebts) {
+      const key = normalizeCustomerName(customer.customerName || '')
+      if (key && !byName.has(key)) byName.set(key, { name: customer.customerName, phone: customer.customerPhone || '', address: '' })
+    }
+    return [...byName.values()]
+  }, [customerProfiles, documents, customerDebts])
   const rememberedCustomerNames = useMemo(() => {
-    const seen = new Set()
-    return [...documents.map((document) => document.customerName), ...customerDebts.map((customer) => customer.customerName)]
-      .filter((name) => {
-        const normalized = String(name || '').trim().toLocaleLowerCase('vi-VN').normalize('NFC')
-        if (!normalized || seen.has(normalized)) return false
-        seen.add(normalized)
-        return true
-      })
-  }, [documents, customerDebts])
+    return rememberedCustomerProfiles.map((profile) => profile.name)
+  }, [rememberedCustomerProfiles])
   const matchingCustomerDebt = form.customerName.trim()
     ? customerDebts.find((customer) => normalizeCustomerName(customer.customerName) === normalizeCustomerName(form.customerName))
     : null
+  const customerSuggestions = !readOnly && form.customerName.trim()
+    ? rememberedCustomerProfiles.filter((profile) => {
+      const candidate = normalizeCustomerName(profile.name)
+      const query = normalizeCustomerName(form.customerName)
+      return candidate.includes(query) && candidate !== query
+    }).slice(0, 8)
+    : []
   const projectedBalance = matchingCustomerDebt
     ? roundMoney(matchingCustomerDebt.balance + (form.isDebt ? total + Number(form.oldDebt || 0) - Number(form.depositAmount || 0) - Number(form.paidAmount || 0) : 0))
     : 0
 
   const change = (field, value) => setForm((current) => ({ ...current, [field]: value }))
+  const chooseCustomer = (profile) => setForm((current) => ({
+    ...current,
+    customerName: profile.name,
+    customerPhone: profile.phone || '',
+    customerAddress: profile.address || '',
+  }))
+  const changeCustomerName = (value) => {
+    const profile = rememberedCustomerProfiles.find((item) => normalizeCustomerName(item.name) === normalizeCustomerName(value))
+    setForm((current) => ({
+      ...current,
+      customerName: value,
+      ...(profile ? { customerPhone: profile.phone || '', customerAddress: profile.address || '' } : {}),
+    }))
+  }
   const changeLine = (key, field, value) => setForm((current) => ({
     ...current,
     lines: current.lines.map((line) => {
@@ -409,6 +441,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
     setError('')
     try {
       const customer = await createErpCustomer(customerAccount)
+      setCustomerProfiles((current) => [customer, ...current.filter((item) => normalizeCustomerName(item.name) !== normalizeCustomerName(customer.name))])
       setForm((current) => ({ ...current, customerName: customer.name, customerPhone: customer.phone, customerAddress: customer.address }))
       setCustomerAccountOpen(false)
       setCustomerAccount({ name: '', phone: '', address: '' })
@@ -443,7 +476,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
             {type === 'salesInvoice' && readOnly && form.fulfillmentStatus && <p className="erp-customer-debt-hint erp-form-wide">Trạng thái: <b>{form.fulfillmentStatus === 'complete' ? 'Đã chốt đủ số lượng' : form.fulfillmentStatus === 'partial' ? 'Đã xuất một phần' : 'Yêu cầu tạm, chưa chốt số lượng'}</b></p>}
             <label>Số chứng từ<input disabled={readOnly} value={form.documentNumber} onChange={(event) => change('documentNumber', event.target.value)} /></label>
             <label>Ngày lập<input type="date" disabled={readOnly} value={form.documentDate} onChange={(event) => change('documentDate', event.target.value)} /></label>
-            <label>Khách hàng<input list="erp-customer-name-options" disabled={readOnly} required value={form.customerName} onChange={(event) => change('customerName', event.target.value)} onBlur={(event) => { const match = customerDebts.find((item) => normalizeCustomerName(item.customerName) === normalizeCustomerName(event.target.value)); if (match && !form.customerPhone) change('customerPhone', match.customerPhone || '') }} /><datalist id="erp-customer-name-options">{rememberedCustomerNames.map((name) => <option key={name} value={name} />)}</datalist></label>
+            <label className="erp-customer-name-field">Khách hàng<input list="erp-customer-name-options" disabled={readOnly} required autoComplete="off" value={form.customerName} onChange={(event) => changeCustomerName(event.target.value)} onBlur={(event) => { const match = customerDebts.find((item) => normalizeCustomerName(item.customerName) === normalizeCustomerName(event.target.value)); if (match && !form.customerPhone) change('customerPhone', match.customerPhone || '') }} /><datalist id="erp-customer-name-options">{rememberedCustomerNames.map((name) => <option key={name} value={name} />)}</datalist>{customerSuggestions.length > 0 && <div className="erp-customer-suggestions" role="listbox" aria-label="Khách hàng phù hợp">{customerSuggestions.map((profile) => <button key={profile.name} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => chooseCustomer(profile)}><strong>{profile.name}</strong><small>{[profile.phone, profile.address].filter(Boolean).join(' · ') || 'Chọn để điền thông tin khách hàng'}</small></button>)}</div>}</label>
             {!readOnly && <button type="button" className="erp-button erp-button--outline" onClick={() => setCustomerAccountOpen(true)}>＋ Tạo tài khoản khách hàng</button>}
             {matchingCustomerDebt && <p className="erp-customer-debt-hint" aria-live="polite">Dư nợ hiện tại: <b>{money(matchingCustomerDebt.balance)} đ</b> · sau hóa đơn này: <b>{money(projectedBalance)} đ</b></p>}
             <details className="erp-advanced-fields erp-form-wide"><summary>Thông tin giao hàng, thanh toán và ghi chú</summary><div className="erp-form-grid">

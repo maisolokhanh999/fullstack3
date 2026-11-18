@@ -7,6 +7,7 @@ import {
   getCustomerPayments,
   getErpDocument,
   getErpDocuments,
+  getErpCustomers,
 } from "../contreller/erpController/erpDocumentController.js";
 import { uploadErpImage } from "../contreller/erpController/erpUploadController.js";
 import { parsePaymentProof } from "../erp/paymentUpload.js";
@@ -38,6 +39,7 @@ router.get("/documents", getErpDocuments);
 router.post("/documents", createErpDocument);
 router.get("/documents/:id", getErpDocument);
 router.get("/debts", getCustomerDebts);
+router.get("/customers", getErpCustomers);
 router.post("/customers", createErpCustomer);
 router.get("/debts/:customerKey/payments", getCustomerPayments);
 router.post("/payments", createCustomerPayment);

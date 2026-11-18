@@ -237,7 +237,7 @@
 .erp-filterbar form { display: grid; gap: 5px; }
 .erp-filterbar label { color: var(--erp-muted); font-size: 10px; font-weight: 700; }
 .erp-filterbar form > div { display: flex; gap: 7px; }
-.erp-filterbar input {
+.erp-filterbar input, .erp-filterbar select {
   width: min(340px, 48vw);
   min-height: 36px;
   padding: 7px 10px;
@@ -247,11 +247,19 @@
   background: #fff;
   font-size: 12px;
 }
+.erp-filterbar select { width: auto; min-width: 130px; }
 .erp-filterbar > span { color: #748179; font-family: var(--font-data); font-size: 10px; }
 
 .erp-table-heading { padding: 20px 20px 14px; }
 .erp-table-heading h2 { margin: 0; color: #243d32; font-family: var(--font-display); font-size: 20px; }
 .erp-table-heading p { margin: 4px 0 0; color: var(--erp-muted); font-size: 11px; }
+.erp-stock-search { display: grid; gap: 5px; min-width: 220px; color: var(--erp-muted); font-size: 10px; font-weight: 700; }
+.erp-stock-search input { min-height: 36px; padding: 7px 10px; border: 1px solid var(--erp-line); border-radius: 5px; color: var(--erp-ink); background: #fff; font: inherit; font-size: 12px; }
+.erp-warehouse-stock-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 0 20px 18px; }
+.erp-warehouse-stock-cards article { display: grid; gap: 5px; padding: 14px 16px; border: 1px solid var(--erp-line); border-radius: 6px; background: #f8faf6; }
+.erp-warehouse-stock-cards span { color: #68786f; font-size: 11px; font-weight: 700; }
+.erp-warehouse-stock-cards strong { color: #234436; font-family: var(--font-data); font-size: 22px; }
+.erp-warehouse-stock-cards small { color: #89968f; font-size: 9px; }
 .erp-table-scroll { width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
 .erp-table-scroll table { width: 100%; min-width: 1030px; border-collapse: collapse; font-size: 11px; }
 .erp-table-scroll th { padding: 11px 13px; border-top: 1px solid var(--erp-line); border-bottom: 1px solid var(--erp-line); color: #728078; background: #f2f6f1; font-size: 9px; font-weight: 800; text-align: left; text-transform: uppercase; white-space: nowrap; }
@@ -316,7 +324,8 @@
   .erp-tabs button { flex: 0 0 auto; }
   .erp-period-tools { width: 100%; flex-wrap: wrap; justify-content: start; }
   .erp-filterbar { align-items: end; }
-  .erp-filterbar input { width: min(260px, 52vw); }
+  .erp-filterbar input, .erp-filterbar select { width: min(260px, 52vw); }
+  .erp-filterbar form > div { flex-wrap: wrap; }
   .erp-topbar { padding: 0 14px; }
   .erp-document-layout { min-width: 0; }
   .erp-document-editor, .erp-saved-documents { min-width: 0; padding: 14px; }
@@ -340,7 +349,9 @@
   .erp-metrics strong { font-size: 18px; }
   .erp-period-tools { flex-wrap: wrap; justify-content: start; }
   .erp-filterbar { align-items: start; flex-direction: column; }
-  .erp-filterbar input { width: min(62vw, 270px); }
+  .erp-filterbar input, .erp-filterbar select { width: min(62vw, 270px); }
+  .erp-warehouse-stock-cards { grid-template-columns: 1fr; padding-inline: 12px; }
+  .erp-stock-search { width: 100%; }
   .erp-table-heading { align-items: start; flex-direction: column; }
   .erp-form-grid { grid-template-columns: 1fr; }
   .erp-form-wide { grid-column: auto; }
@@ -360,7 +371,8 @@
   .erp-period-tools label { gap: 4px; }
   .erp-filterbar { padding-inline: 12px; }
   .erp-filterbar form, .erp-filterbar form > div { width: 100%; }
-  .erp-filterbar input { flex: 1; min-width: 0; width: auto; }
+  .erp-filterbar form > div { flex-wrap: wrap; }
+  .erp-filterbar input, .erp-filterbar select { flex: 1 1 42%; min-width: 0; width: auto; }
   .erp-document-mode .erp-topbar { flex-wrap: wrap; padding: 9px 12px; }
   .erp-document-mode .erp-topbar > .erp-button { order: 1; }
   .erp-document-mode .erp-brand { order: 2; margin-left: auto; }
@@ -578,6 +590,11 @@
 .erp-payment-previews .erp-payment-preview { height: 84px; max-height: 84px; }
 .erp-customer-debt-hint { grid-column: 1 / -1; margin: -4px 0 0; padding: 8px 10px; border-left: 3px solid #b34531; color: #53675c; background: #f3f6ed; font-size: 10px; }
 .erp-customer-debt-hint b { color: #a34532; font-family: var(--font-data); }
+.erp-customer-name-field { position: relative; }
+.erp-customer-suggestions { position: absolute; z-index: 20; top: calc(100% + 3px); right: 0; left: 0; display: grid; max-height: 260px; overflow-y: auto; border: 1px solid #d9e3da; border-radius: 6px; background: #fff; box-shadow: 0 10px 24px rgba(25, 48, 36, .16); }
+.erp-customer-suggestions button { display: grid; gap: 4px; padding: 9px 11px; border: 0; border-bottom: 1px solid #edf1ed; color: #284438; background: #fff; text-align: left; cursor: pointer; }
+.erp-customer-suggestions button:hover, .erp-customer-suggestions button:focus-visible { background: #f1f6f0; }
+.erp-customer-suggestions small { color: #7a8980; font-size: 10px; font-weight: 400; }
 .erp-settlement-mode { display: flex; gap: 7px; padding: 2px 0; }
 .erp-settlement-mode button { min-height: 36px; padding: 7px 11px; border: 1px solid var(--erp-line); border-radius: 5px; color: #53675c; background: #fff; font-size: 10px; font-weight: 700; cursor: pointer; }
 .erp-settlement-mode button[aria-pressed='true'] { border-color: #315d49; color: #fff; background: #315d49; }

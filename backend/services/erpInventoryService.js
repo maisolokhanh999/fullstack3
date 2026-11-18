@@ -48,11 +48,37 @@ export const buildMonthRange = (yearValue, monthValue) => {
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-export const buildMovementFilter = ({ year, month, productName, productId, type }) => {
+export const buildMovementFilter = ({ year, month, dateFrom, dateTo, productName, productId, type, warehouse }) => {
   const filter = {};
-  const range = buildMonthRange(year, month);
+  let range;
+  if (dateFrom || dateTo) {
+    const parseLocalDate = (value) => {
+      if (!value) return null;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ErpError(400, "Khoảng ngày lọc không hợp lệ");
+      const date = new Date(`${value}T00:00:00+07:00`);
+      if (Number.isNaN(date.getTime())) throw new ErpError(400, "Khoảng ngày lọc không hợp lệ");
+      const localDate = new Date(date.getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      if (localDate !== value) throw new ErpError(400, "Khoảng ngày lọc không hợp lệ");
+      return date;
+    };
+    const from = parseLocalDate(dateFrom);
+    const to = parseLocalDate(dateTo);
+    if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))) {
+      throw new ErpError(400, "Khoảng ngày lọc không hợp lệ");
+    }
+    if (from && to && from > to) throw new ErpError(400, "Ngày bắt đầu không thể sau ngày kết thúc");
+    range = {};
+    if (from) range.$gte = from;
+    if (to) range.$lt = new Date(to.getTime() + 24 * 60 * 60 * 1000);
+  } else {
+    range = buildMonthRange(year, month);
+  }
   if (range) filter.movementDate = range;
-  if (productName?.trim()) filter.productName = { $regex: escapeRegex(productName.trim()), $options: "i" };
+  if (warehouse) filter.warehouse = validateWarehouse(warehouse);
+  if (productName?.trim()) {
+    const productPattern = { $regex: escapeRegex(productName.trim()), $options: "i" };
+    filter.$or = [{ productName: productPattern }, { sku: productPattern }];
+  }
   if (productId) {
     if (!mongoose.isValidObjectId(productId)) throw new ErpError(400, "Mã sản phẩm không hợp lệ");
     filter.productId = productId;
