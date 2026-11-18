@@ -64,6 +64,27 @@ export const createErpDocument = async (req, res) => {
         if (!mongoose.isValidObjectId(body.sourceDocumentId)) throw new ErpError(400, "Mã hóa đơn liên kết không hợp lệ");
         sourceDocument = await ErpDocument.findOne({ _id: body.sourceDocumentId, type: "salesInvoice" }).session(session);
         if (!sourceDocument) throw new ErpError(404, "Không tìm thấy hóa đơn gốc");
+        const invoiced = new Map();
+        const shipped = new Map();
+        const requested = new Map();
+        for (const line of sourceDocument.lines) {
+          const id = String(line.productId);
+          invoiced.set(id, (invoiced.get(id) || 0) + line.quantity);
+        }
+        const previousIssues = await ErpDocument.find({ type: "stockIssue", sourceDocumentId: sourceDocument._id }).session(session);
+        for (const issue of previousIssues) for (const line of issue.lines) {
+          const id = String(line.productId);
+          shipped.set(id, (shipped.get(id) || 0) + line.quantity);
+        }
+        for (const line of body.lines) {
+          const id = String(line.productId);
+          requested.set(id, (requested.get(id) || 0) + line.quantity);
+        }
+        for (const [id, quantity] of requested) {
+          if (quantity > (invoiced.get(id) || 0) - (shipped.get(id) || 0) + 0.000001) {
+            throw new ErpError(409, "Số lượng xuất vượt quá số lượng còn lại trên hóa đơn");
+          }
+        }
       }
       if (productById.size !== productIds.length) throw new ErpError(404, "Không tìm thấy một hoặc nhiều sản phẩm đang hoạt động");
 

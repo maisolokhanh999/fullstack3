@@ -122,6 +122,8 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const [section, setSection] = useState('documents')
   const [form, setForm] = useState(() => newForm())
   const [documents, setDocuments] = useState([])
+  const [availableInvoices, setAvailableInvoices] = useState([])
+  const [invoiceSearch, setInvoiceSearch] = useState('')
   const [linkedIssues, setLinkedIssues] = useState([])
   const [customerDebts, setCustomerDebts] = useState([])
   const [readOnly, setReadOnly] = useState(false)
@@ -139,7 +141,11 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const matchingProducts = products.filter((product) => `${product.name} ${product.sku}`.toLocaleLowerCase('vi-VN').includes(productSearch.trim().toLocaleLowerCase('vi-VN')))
 
   const loadDocuments = async () => {
-    try { setDocuments(await getErpDocuments()) }
+    try {
+      const [rows, invoices] = await Promise.all([getErpDocuments(), getErpDocuments({ type: 'salesInvoice' })])
+      setDocuments(rows)
+      setAvailableInvoices(invoices)
+    }
     catch (loadError) { setError(loadError.message) }
   }
   useEffect(() => {
@@ -199,6 +205,60 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
     setForm((current) => ({ ...current, lines: [...current.lines, ...newLines] }))
     setSelectedProductIds([])
     setProductSearch('')
+  }
+  const selectInvoiceForIssue = async (value) => {
+    const normalized = value.trim().toLocaleLowerCase('vi-VN')
+    const selectedInvoice = availableInvoices.find((invoice) => `${invoice.documentNumber} · ${invoice.customerName}`.toLocaleLowerCase('vi-VN') === normalized || invoice.documentNumber.toLocaleLowerCase('vi-VN') === normalized)
+    if (!selectedInvoice) return
+    setBusy(true)
+    setError('')
+    try {
+      const [invoice, priorIssues] = await Promise.all([
+        getErpDocument(selectedInvoice._id),
+        getErpDocuments({ sourceDocumentId: selectedInvoice._id }),
+      ])
+      const invoicedByProduct = new Map()
+      const shippedByProduct = new Map()
+      for (const line of invoice.lines) {
+        const productId = String(line.productId)
+        invoicedByProduct.set(productId, (invoicedByProduct.get(productId) || 0) + Number(line.quantity || 0))
+      }
+      for (const issue of priorIssues) for (const line of issue.lines) {
+        const productId = String(line.productId)
+        shippedByProduct.set(productId, (shippedByProduct.get(productId) || 0) + Number(line.quantity || 0))
+      }
+      const remainingByProduct = new Map([...invoicedByProduct].map(([id, amount]) => [id, Math.max(0, amount - (shippedByProduct.get(id) || 0))]))
+      const lines = invoice.lines.flatMap((line) => {
+        const id = String(line.productId)
+        const remaining = remainingByProduct.get(id) || 0
+        const quantity = Math.min(Number(line.quantity || 0), remaining)
+        remainingByProduct.set(id, Math.max(0, remaining - quantity))
+        if (!quantity) return []
+        const ratio = quantity / Number(line.quantity || 1)
+        return [{ ...line, key: `invoice-${line.sku}-${Math.random()}`, quantity, weight: Number(line.weight || 0) * ratio, warehouse: line.warehouse || 'thanh-phu' }]
+      })
+      if (!lines.length) throw new Error('Hóa đơn này đã được xuất đủ số lượng.')
+      setType('stockIssue')
+      setReadOnly(false)
+      setForm((current) => ({
+        ...current,
+        type: 'stockIssue',
+        sourceDocumentId: invoice._id,
+        sourceDocumentNumber: invoice.documentNumber,
+        customerName: invoice.customerName,
+        customerPhone: invoice.customerPhone || '',
+        customerAddress: invoice.customerAddress || '',
+        deliveryAddress: invoice.deliveryAddress || invoice.customerAddress || '',
+        deliveryDate: invoice.deliveryDate ? new Date(invoice.deliveryDate).toISOString().slice(0, 10) : '',
+        issuerName: current.issuerName || 'Kho xuất hàng',
+        imageUrl: invoice.imageUrl || '',
+        note: `Xuất theo hóa đơn ${invoice.documentNumber}. ${invoice.note || ''}`.trim(),
+        lines,
+      }))
+      setInvoiceSearch(`${invoice.documentNumber} · ${invoice.customerName}`)
+      setNotice(`Đã lấy hóa đơn ${invoice.documentNumber}. Các mặt hàng đã xuất được trừ khỏi số lượng còn lại.`)
+    } catch (selectionError) { setError(selectionError.message) }
+    finally { setBusy(false) }
   }
   const changePriceType = (priceType) => setForm((current) => ({
     ...current,
@@ -315,6 +375,7 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
             <button type="button" role="tab" aria-selected={type === 'salesInvoice'} disabled={readOnly} onClick={() => changeType('salesInvoice')}>Hóa đơn bán hàng</button>
             <button type="button" role="tab" aria-selected={type === 'stockIssue'} disabled={readOnly} onClick={() => changeType('stockIssue')}>Phiếu xuất kho</button>
           </div>
+          {type === 'stockIssue' && !readOnly && <div className="erp-invoice-picker"><label htmlFor="erp-source-invoice">Chọn hóa đơn để lập phiếu xuất</label><input id="erp-source-invoice" list="erp-source-invoice-options" value={invoiceSearch} disabled={busy} placeholder="Gõ số hóa đơn hoặc tên khách hàng" onChange={(event) => { setInvoiceSearch(event.target.value); selectInvoiceForIssue(event.target.value) }} /><datalist id="erp-source-invoice-options">{availableInvoices.map((invoice) => <option key={invoice._id} value={`${invoice.documentNumber} · ${invoice.customerName}`} />)}</datalist><small>Thông tin khách hàng và hàng hóa sẽ tự điền; chỉ còn số lượng chưa xuất.</small></div>}
           <div className="erp-form-grid">
             {type === 'stockIssue' && form.sourceDocumentNumber && <p className="erp-customer-debt-hint erp-form-wide">Phiếu xuất liên kết hóa đơn <b>{form.sourceDocumentNumber}</b>; khách hàng, địa chỉ và mặt hàng đã được lấy từ hóa đơn.</p>}
             <label>Số chứng từ<input disabled={readOnly} value={form.documentNumber} onChange={(event) => change('documentNumber', event.target.value)} /></label>
