@@ -473,7 +473,10 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
       setReadOnly(true)
       setInvoicePaymentOpen(false)
       setNotice('Đã chốt hóa đơn, cập nhật số lượng thực xuất và trừ tồn kho.')
-    } catch (finalizeError) { setError(finalizeError.message) }
+    } catch (finalizeError) {
+      setReadOnly(false)
+      setError(finalizeError.message)
+    }
     finally { setBusy(false) }
   }
   const saveCustomerAccount = async () => {

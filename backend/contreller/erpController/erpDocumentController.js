@@ -206,7 +206,8 @@ export const createErpDocument = async (req, res) => {
         const wasPending = sourceDocument.fulfillmentStatus === "pending";
         const previouslyPaid = wasPending ? 0 : sourceDocument.paidAmount;
         const outstanding = roundMoney(Math.max(0, totalAmount + sourceDocument.oldDebt - sourceDocument.depositAmount - previouslyPaid - (sourceDocument.debtResetAmount || 0)));
-        if (paymentAmount > 0 && paymentMethod === "mixed" && (!cashPaidAmount || !bankPaidAmount)) throw new ErpError(400, "Thanh toán kết hợp cần có cả tiền mặt và chuyển khoản");
+        // With mixed payment, either field may be zero (for example, the customer
+        // pays the balance entirely in cash while the invoice is configured for both).
         if ((paymentMethod === "cash" && bankPaidAmount > 0) || (paymentMethod === "bankTransfer" && cashPaidAmount > 0)) throw new ErpError(400, "Số tiền không khớp hình thức thanh toán đã chọn");
         if (paymentAmount > outstanding + 0.005) throw new ErpError(400, "Tiền thanh toán vượt quá số còn phải trả sau khi trừ tiền cọc");
         if (!sourceDocument.isDebt && paymentAmount + 0.005 < outstanding) throw new ErpError(400, "Cần thanh toán đủ số còn lại sau khi trừ tiền cọc để chốt hóa đơn");
@@ -301,7 +302,6 @@ export const finalizeErpInvoice = async (req, res) => {
       const paymentAmount = roundMoney(cashPaidAmount + bankPaidAmount);
       const outstanding = roundMoney(Math.max(0, totalAmount + oldDebt - depositAmount - (current.debtResetAmount || 0)));
       if (depositAmount > totalAmount + oldDebt) throw new ErpError(400, "Tiền cọc không thể lớn hơn tổng thanh toán");
-      if (paymentAmount > 0 && body.paymentMethod === "mixed" && (!cashPaidAmount || !bankPaidAmount)) throw new ErpError(400, "Thanh toán kết hợp cần có cả tiền mặt và chuyển khoản");
       if ((body.paymentMethod === "cash" && bankPaidAmount > 0) || (body.paymentMethod === "bankTransfer" && cashPaidAmount > 0)) throw new ErpError(400, "Số tiền không khớp hình thức thanh toán đã chọn");
       if (paymentAmount > outstanding + 0.005) throw new ErpError(400, "Tiền thanh toán vượt quá số còn phải trả sau khi trừ tiền cọc");
       if (!body.isDebt && paymentAmount + 0.005 < outstanding) throw new ErpError(400, "Cần thanh toán đủ số còn lại sau khi trừ tiền cọc để chốt hóa đơn");
