@@ -187,7 +187,9 @@
   border-radius: 7px;
   background: var(--erp-paper);
   box-shadow: 0 8px 22px rgba(26, 54, 43, 0.045);
+  transition: opacity 140ms ease, transform 140ms ease;
 }
+.erp-ledger.is-tab-pending { opacity: 0.78; transform: translateY(2px); }
 
 .erp-ledger-toolbar {
   min-height: 68px;

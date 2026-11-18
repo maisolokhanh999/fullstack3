@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { createErpReceiptBatch, downloadErpWorkbook, getErpMovements, getErpProducts, saveErpMovement, saveErpProduct } from '../services/erpApi.js'
 import ErpDocuments from '../components/ErpDocuments.jsx'
 import '../styles/erp.css'
@@ -190,6 +190,7 @@ export default function ErpPage() {
   const [products, setProducts] = useState([])
   const [movements, setMovements] = useState([])
   const [tab, setTab] = useState('ledger')
+  const [isTabPending, startTabTransition] = useTransition()
   const [documentsMode, setDocumentsMode] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [activeKeyword, setActiveKeyword] = useState('')
@@ -213,19 +214,26 @@ export default function ErpPage() {
 
   useEffect(() => {
     let alive = true
-    setBusy(true)
-    Promise.all([
-      getErpProducts(),
-      getErpMovements({ year, month, productName: activeKeyword, shippedOnly: tab === 'shipments' }),
-    ]).then(([productRows, movementRows]) => {
-      if (!alive) return
-      setProducts(productRows)
-      setMovements(movementRows)
-      setError('')
+    getErpProducts().then((productRows) => {
+      if (alive) setProducts(productRows)
     }).catch((loadError) => {
-      if (!alive) return
-      setError(loadError.message)
-    }).finally(() => { if (alive) setBusy(false) })
+      if (alive) setError(loadError.message)
+    })
+    return () => { alive = false }
+  }, [reloadId])
+
+  useEffect(() => {
+    if (tab === 'products') { setBusy(false); return undefined }
+    let alive = true
+    setBusy(true)
+    getErpMovements({ year, month, productName: activeKeyword, shippedOnly: tab === 'shipments' })
+      .then((movementRows) => {
+        if (!alive) return
+        setMovements(movementRows)
+        setError('')
+      }).catch((loadError) => {
+        if (alive) setError(loadError.message)
+      }).finally(() => { if (alive) setBusy(false) })
     return () => { alive = false }
   }, [year, month, activeKeyword, tab, reloadId])
 
@@ -263,10 +271,10 @@ export default function ErpPage() {
         <div className={lowStock ? 'erp-metric-warning' : ''}><span>Cần bổ sung</span><strong>{lowStock}</strong><small>Dưới mức tồn tối thiểu</small></div>
       </section>
 
-      <section className="erp-ledger">
+      <section className={`erp-ledger${isTabPending ? ' is-tab-pending' : ''}`}>
         <div className="erp-ledger-toolbar">
           <div className="erp-tabs" role="tablist" aria-label="Dữ liệu kho">
-            {[['ledger', 'Sổ giao dịch'], ['shipments', 'Hàng đã xuất'], ['products', 'Sản phẩm']].map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}>{label}</button>)}
+            {[['ledger', 'Sổ giao dịch'], ['shipments', 'Hàng đã xuất'], ['products', 'Sản phẩm']].map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => startTabTransition(() => setTab(value))}>{label}</button>)}
           </div>
           <div className="erp-period-tools"><label>Tháng<select value={month} onChange={(event) => setMonth(event.target.value)}>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{String(index + 1).padStart(2, '0')}</option>)}</select></label><label>Năm<input type="number" min="2000" max="2100" value={year} onChange={(event) => setYear(event.target.value)} /></label><button className="erp-button erp-button--outline" type="button" onClick={exportExcel} disabled={busy}>↓ Excel</button></div>
         </div>
