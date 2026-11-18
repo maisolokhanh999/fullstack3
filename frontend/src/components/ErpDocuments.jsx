@@ -20,7 +20,7 @@ const newForm = (type = 'salesInvoice') => ({
   documentNumber: newNumber(type), documentDate: today(), deliveryDate: '', customerName: '', customerPhone: '',
   sourceDocumentId: '', sourceDocumentNumber: '',
   customerAddress: '', deliveryAddress: '', issuerName: '', imageUrl: '', note: '', oldDebt: '', depositAmount: '', paidAmount: '', paymentInWords: '',
-  priceType: 'retail', isDebt: false, documentMode: 'standard',
+  priceType: 'retail', isDebt: false, documentMode: 'standard', paymentMethod: 'cash', cashPaidAmount: '', bankPaidAmount: '',
   lines: [newLine()],
 })
 
@@ -139,6 +139,13 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
   const productById = useMemo(() => new Map(products.map((product) => [product._id, product])), [products])
   const total = form.lines.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0), 0)
   const totalWeight = form.lines.reduce((sum, line) => sum + Number(line.weight || 0), 0)
+  const linkedInvoice = availableInvoices.find((invoice) => String(invoice._id) === String(form.sourceDocumentId))
+  const issueLineAmount = form.lines.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0), 0)
+  const issuedBeforeAmount = linkedInvoice?.fulfillmentStatus === 'pending' ? 0 : Number(linkedInvoice?.totalAmount || 0)
+  const linkedInvoicePaid = linkedInvoice?.fulfillmentStatus === 'pending' ? 0 : Number(linkedInvoice?.paidAmount || 0)
+  const invoicePaymentDue = linkedInvoice
+    ? Math.max(0, roundMoney(issuedBeforeAmount + issueLineAmount + Number(linkedInvoice.oldDebt || 0) - Number(linkedInvoice.depositAmount || 0) - linkedInvoicePaid))
+    : 0
   const matchingProducts = products.filter((product) => `${product.name} ${product.sku}`.toLocaleLowerCase('vi-VN').includes(productSearch.trim().toLocaleLowerCase('vi-VN')))
 
   const loadDocuments = async () => {
@@ -253,6 +260,9 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
         deliveryAddress: invoice.deliveryAddress || invoice.customerAddress || '',
         deliveryDate: invoice.deliveryDate ? new Date(invoice.deliveryDate).toISOString().slice(0, 10) : '',
         issuerName: current.issuerName || 'Kho xuất hàng',
+        paymentMethod: invoice.paymentMethod || 'cash',
+        cashPaidAmount: '',
+        bankPaidAmount: '',
         imageUrl: invoice.imageUrl || '',
         note: `Xuất theo hóa đơn ${invoice.documentNumber}. ${invoice.note || ''}`.trim(),
         lines,
@@ -312,9 +322,12 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
         ...form,
         oldDebt: Number(form.oldDebt || 0),
         depositAmount: Number(form.depositAmount || 0),
-        paidAmount: form.isDebt
+        paidAmount: type === 'salesInvoice' ? 0 : form.isDebt
           ? Number(form.paidAmount || 0)
           : roundMoney(total + Number(form.oldDebt || 0) - Number(form.depositAmount || 0)),
+        paymentMethod: form.paymentMethod || 'cash',
+        cashPaidAmount: type === 'stockIssue' && ['cash', 'mixed'].includes(form.paymentMethod) ? Number(form.cashPaidAmount || 0) : 0,
+        bankPaidAmount: type === 'stockIssue' && ['bankTransfer', 'mixed'].includes(form.paymentMethod) ? Number(form.bankPaidAmount || 0) : 0,
         documentDate: new Date(`${form.documentDate}T12:00:00+07:00`).toISOString(),
         deliveryDate: form.deliveryDate ? new Date(`${form.deliveryDate}T12:00:00+07:00`).toISOString() : '',
         lines: form.lines.map((formLine) => {
@@ -392,16 +405,16 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
             <label className="erp-form-wide">Ảnh minh họa giao hàng (URL)<input type="url" disabled={readOnly} value={form.imageUrl} onChange={(event) => change('imageUrl', event.target.value)} placeholder="https://..." /></label>
             {type === 'salesInvoice' && <>
               <label>Loại giá<select disabled={readOnly} value={form.priceType || 'retail'} onChange={(event) => changePriceType(event.target.value)}><option value="retail">Giá bán lẻ</option><option value="store">Giá cửa hàng</option></select></label>
-              <label>Mẫu in<select disabled={readOnly} value={form.documentMode || 'standard'} onChange={(event) => setForm((current) => ({ ...current, documentMode: event.target.value, isDebt: event.target.value === 'quantityDebt' ? true : current.isDebt }))}><option value="standard">Hóa đơn có giá</option><option value="noPrice">Không ghi giá</option><option value="quantityDebt">Ghi nợ, chỉ hiện số lượng</option></select></label>
-              <div className="erp-settlement-mode erp-form-wide" role="group" aria-label="Hình thức thanh toán"><button type="button" aria-pressed={!form.isDebt} disabled={readOnly} onClick={() => change('isDebt', false)}>Đóng tiền · không ghi nợ</button><button type="button" aria-pressed={Boolean(form.isDebt)} disabled={readOnly} onClick={() => change('isDebt', true)}>Ghi nợ · ẩn giá khi in</button></div>
+              <label>Mẫu in<select disabled={readOnly} value={form.documentMode || 'standard'} onChange={(event) => setForm((current) => ({ ...current, documentMode: event.target.value, isDebt: event.target.value === 'quantityDebt' }))}><option value="standard">Hóa đơn có giá</option><option value="noPrice">Không ghi giá</option><option value="quantityDebt">Ghi nợ, chỉ hiện số lượng</option></select></label>
+              <label>Hình thức thanh toán<select disabled={readOnly} value={form.paymentMethod || 'cash'} onChange={(event) => change('paymentMethod', event.target.value)}><option value="bankTransfer">Chuyển khoản</option><option value="cash">Tiền mặt</option><option value="mixed">Chuyển khoản và tiền mặt</option></select></label>
               <label>Nợ cũ<input type="number" min="0" step="0.01" disabled={readOnly} value={form.oldDebt} onChange={(event) => change('oldDebt', event.target.value)} /></label>
               <label>Tiền cọc<input type="number" min="0" step="0.01" disabled={readOnly} value={form.depositAmount} onChange={(event) => change('depositAmount', event.target.value)} /></label>
-              {form.isDebt && <label>Khách trả trước<input type="number" min="0" step="0.01" disabled={readOnly} value={form.paidAmount} onChange={(event) => change('paidAmount', event.target.value)} /></label>}
               <label className="erp-form-wide">Thanh toán bằng chữ<input disabled={readOnly} value={form.paymentInWords} onChange={(event) => change('paymentInWords', event.target.value)} /></label>
             </>}
             <label className="erp-form-wide">Ghi chú<input disabled={readOnly} value={form.note} onChange={(event) => change('note', event.target.value)} /></label>
             </div></details>
           </div>
+          {type === 'stockIssue' && !readOnly && linkedInvoice && invoicePaymentDue > 0.005 && <section className="erp-settlement-panel"><div><h3>Thanh toán và chốt hóa đơn</h3><p>Tiền cọc {money(linkedInvoice.depositAmount)} đ đã được khấu trừ. Còn phải thanh toán <strong>{money(invoicePaymentDue)} đ</strong>.</p></div><label>Hình thức thanh toán<select value={form.paymentMethod || linkedInvoice.paymentMethod || 'cash'} onChange={(event) => change('paymentMethod', event.target.value)}><option value="bankTransfer">Chuyển khoản</option><option value="cash">Tiền mặt</option><option value="mixed">Chuyển khoản và tiền mặt</option></select></label>{['cash', 'mixed'].includes(form.paymentMethod) && <label>Tiền mặt<input type="number" min="0" max={invoicePaymentDue} step="0.01" value={form.cashPaidAmount} onChange={(event) => change('cashPaidAmount', event.target.value)} /></label>}{['bankTransfer', 'mixed'].includes(form.paymentMethod) && <label>Chuyển khoản<input type="number" min="0" max={invoicePaymentDue} step="0.01" value={form.bankPaidAmount} onChange={(event) => change('bankPaidAmount', event.target.value)} /></label>}</section>}
           <div className="erp-document-line-editor">
             {!readOnly && <div className="erp-product-picker"><label>Tìm và chọn nhiều mặt hàng<input type="search" placeholder="Gõ tên hoặc mã sản phẩm" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} /></label><div className="erp-product-picker__results">{matchingProducts.slice(0, 40).map((product) => <label key={product._id}><input type="checkbox" checked={selectedProductIds.includes(product._id)} onChange={(event) => setSelectedProductIds((current) => event.target.checked ? [...current, product._id] : current.filter((id) => id !== product._id))} /><span>{product.name}<small>{product.sku} · Tồn {quantityText(product.currentStock)} {product.unit}</small></span></label>)}{matchingProducts.length > 40 && <small>Đang hiện 40 kết quả đầu tiên; hãy gõ thêm để thu hẹp kết quả.</small>}{matchingProducts.length === 0 && <small>Không tìm thấy sản phẩm khớp.</small>}</div><button type="button" className="erp-button erp-button--outline" disabled={!selectedProductIds.length} onClick={addSelectedProducts}>Thêm {selectedProductIds.length} mặt hàng đã chọn</button></div>}
             <div className="erp-document-line-heading"><h2>Hàng hóa</h2>{!readOnly && <button type="button" className="erp-button erp-button--outline" onClick={() => setForm((current) => ({ ...current, lines: [...current.lines, newLine()] }))}>＋ Thêm dòng</button>}</div>
@@ -437,9 +450,9 @@ export default function ErpDocuments({ products, onBack, onSaved }) {
           {Array.from({ length: Math.max(0, 25 - form.lines.length) }, (_, index) => <tr className="erp-paper__blank-row" key={`blank-${index}`}><td>{form.lines.length + index + 1}</td><td /><td /><td /><td />{form.documentMode !== 'quantityDebt' && <><td /><td /></>}</tr>)}
         </tbody></table>
         {form.isDebt && <p className="erp-paper__debt-stamp">GHI NỢ KHÁCH HÀNG</p>}
-        {form.documentMode === 'standard' && <><div className="erp-paper__totals"><p><span>Phải thanh toán:</span><strong>{form.isDebt ? '' : money(total + Number(form.oldDebt || 0))}</strong></p><p><span>Nợ cũ:</span><strong>{form.isDebt ? '' : money(form.oldDebt)}</strong></p><p><span>Tiền hàng:</span><strong>{form.isDebt ? '' : money(total)}</strong></p><p><span>Đặt cọc:</span><strong>{form.isDebt ? '' : money(form.depositAmount)}</strong></p><p><span>Thanh toán hết:</span><strong>{form.isDebt ? '' : money(total + Number(form.oldDebt || 0))}</strong></p></div>
+        {form.documentMode === 'standard' && <><div className="erp-paper__totals"><p><span>Phải thanh toán:</span><strong>{form.isDebt ? '' : money(total + Number(form.oldDebt || 0))}</strong></p><p><span>Nợ cũ:</span><strong>{form.isDebt ? '' : money(form.oldDebt)}</strong></p><p><span>Tiền hàng:</span><strong>{form.isDebt ? '' : money(total)}</strong></p><p><span>Tiền cọc (đã trừ):</span><strong>{form.isDebt ? '' : `-${money(form.depositAmount)}`}</strong></p><p><span>Đã thanh toán:</span><strong>{form.isDebt ? '' : money(form.paidAmount)}</strong></p><p><span>Còn phải trả:</span><strong>{form.isDebt ? '' : money(Math.max(0, total + Number(form.oldDebt || 0) - Number(form.depositAmount || 0) - Number(form.paidAmount || 0)))}</strong></p></div>
         <p className="erp-paper__words"><b>Thanh toán hết bằng chữ:</b><span>{form.isDebt ? '' : form.paymentInWords || '........................................................................................................'}</span></p></>}
-        {!form.isDebt && <p className="erp-paper__payment-method">Không đồng</p>}
+        {!form.isDebt && <p className="erp-paper__payment-method">Hình thức thanh toán: {form.paymentMethod === 'bankTransfer' ? 'Chuyển khoản' : form.paymentMethod === 'mixed' ? 'Chuyển khoản và tiền mặt' : 'Tiền mặt'}</p>}
         <p className="erp-paper__note"><b>Ghi chú:</b><span>{form.note || 'Cảm ơn quý khách đã ủng hộ cửa hàng.'}</span></p>
         <p className="erp-paper__return-policy">Chỉ đổi trả hàng trong vòng 1 tuần kể từ ngày mua (không đổi hoặc trả tấn/bao đã khui).</p>
         <footer className="erp-paper__signatures"><span>KHÁCH HÀNG</span><span>LẬP PHIẾU</span></footer>

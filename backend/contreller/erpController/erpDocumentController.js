@@ -39,9 +39,10 @@ const validateDocument = (body) => {
     if (line.unitPrice !== undefined && !validAmount(line.unitPrice)) throw new ErpError(400, "Đơn giá không hợp lệ");
     if (line.weight !== undefined && !validAmount(line.weight)) throw new ErpError(400, "Trọng lượng không hợp lệ");
   }
-  for (const field of ["oldDebt", "depositAmount", "paidAmount"]) {
+  for (const field of ["oldDebt", "depositAmount", "paidAmount", "cashPaidAmount", "bankPaidAmount"]) {
     if (body[field] !== undefined && !validAmount(body[field])) throw new ErpError(400, "Thông tin thanh toán không hợp lệ");
   }
+  if (body.paymentMethod !== undefined && !["bankTransfer", "cash", "mixed"].includes(body.paymentMethod)) throw new ErpError(400, "Phuong thuc thanh toan khong hop le");
 };
 
 export const createErpDocument = async (req, res) => {
@@ -138,9 +139,10 @@ export const createErpDocument = async (req, res) => {
         oldDebt: body.type === "salesInvoice" ? body.oldDebt ?? 0 : 0,
         depositAmount,
         isDebt: body.type === "salesInvoice" ? Boolean(body.isDebt) : false,
-        paidAmount: body.type === "salesInvoice"
-          ? (body.isDebt ? body.paidAmount ?? 0 : roundMoney(totalAmount + (body.oldDebt ?? 0) - depositAmount))
-          : 0,
+        paymentMethod: body.type === "salesInvoice" ? body.paymentMethod || "cash" : "cash",
+        cashPaidAmount: body.type === "salesInvoice" ? body.cashPaidAmount ?? 0 : 0,
+        bankPaidAmount: body.type === "salesInvoice" ? body.bankPaidAmount ?? 0 : 0,
+        paidAmount: body.type === "salesInvoice" ? body.paidAmount ?? 0 : 0,
         priceType,
         documentMode: ["standard", "noPrice", "quantityDebt"].includes(body.documentMode) ? body.documentMode : "standard",
         paymentInWords: body.type === "salesInvoice" ? body.paymentInWords || "" : "",
@@ -206,11 +208,24 @@ export const createErpDocument = async (req, res) => {
         const shippedTotal = [...shippedByProduct.values()].reduce((sum, quantity) => sum + quantity, 0);
         const totalAmount = roundMoney(syncedLines.reduce((sum, line) => sum + line.amount, 0));
         const totalWeight = Math.round((syncedLines.reduce((sum, line) => sum + line.weight, 0) + Number.EPSILON) * 1000) / 1000;
+        const cashPaidAmount = body.cashPaidAmount ?? 0;
+        const bankPaidAmount = body.bankPaidAmount ?? 0;
+        const paymentAmount = roundMoney(cashPaidAmount + bankPaidAmount);
+        const paymentMethod = body.paymentMethod || sourceDocument.paymentMethod || "cash";
+        const previouslyPaid = sourceDocument.fulfillmentStatus === "pending" ? 0 : sourceDocument.paidAmount;
+        const outstanding = roundMoney(Math.max(0, totalAmount + sourceDocument.oldDebt - sourceDocument.depositAmount - previouslyPaid));
+        if (paymentAmount > 0 && paymentMethod === "mixed" && (!cashPaidAmount || !bankPaidAmount)) throw new ErpError(400, "Thanh toán kết hợp cần có cả tiền mặt và chuyển khoản");
+        if ((paymentMethod === "cash" && bankPaidAmount > 0) || (paymentMethod === "bankTransfer" && cashPaidAmount > 0)) throw new ErpError(400, "Số tiền không khớp hình thức thanh toán đã chọn");
+        if (paymentAmount > outstanding + 0.005) throw new ErpError(400, "Tiền thanh toán vượt quá số còn phải trả sau khi trừ tiền cọc");
+        if (!sourceDocument.isDebt && paymentAmount + 0.005 < outstanding) throw new ErpError(400, "Cần thanh toán đủ số còn lại sau khi trừ tiền cọc để chốt hóa đơn");
         sourceDocument.lines = syncedLines;
         sourceDocument.totalAmount = totalAmount;
         sourceDocument.totalWeight = totalWeight;
         sourceDocument.fulfillmentStatus = shippedTotal >= requestedTotal - 0.000001 ? "complete" : "partial";
-        if (!sourceDocument.isDebt) sourceDocument.paidAmount = roundMoney(Math.max(0, totalAmount + sourceDocument.oldDebt - sourceDocument.depositAmount));
+        sourceDocument.paymentMethod = paymentMethod;
+        sourceDocument.cashPaidAmount += cashPaidAmount;
+        sourceDocument.bankPaidAmount += bankPaidAmount;
+        sourceDocument.paidAmount = previouslyPaid + paymentAmount;
         await sourceDocument.save({ session });
       }
 
